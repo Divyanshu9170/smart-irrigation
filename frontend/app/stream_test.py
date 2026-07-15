@@ -32,4 +32,4 @@ while True:
     except Exception as e:
         print("❌ Error:", e)
 
-    time.sleep(60)
+    time.sleep(10)

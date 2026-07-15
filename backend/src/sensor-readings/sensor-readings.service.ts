@@ -39,10 +39,11 @@ export class SensorReadingsService {
     return this.sensorRepo.save(reading);
   }
 
-  // ✅ GET ALL
+  // ✅ GET ALL (LATEST FIRST)
   async findAll() {
     return this.sensorRepo.find({
       relations: ['device'],
+      order: { createdAt: 'DESC' },
     });
   }
 }
