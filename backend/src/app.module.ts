@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 
 import { DevicesModule } from './devices/devices.module';
-import { SensorReadingsModule } from './sensor-readings/sensor-readings.module'; // ✅ MUST
+import { SensorReadingsModule } from './sensor-readings/sensor-readings.module';
 import { CropsModule } from './crops/crops.module';
 import { AutoActionsModule } from './auto-actions/auto-actions.module';
 
@@ -17,19 +17,30 @@ import { AppService } from './app.service';
     }),
 
     TypeOrmModule.forRoot({
-      type: 'better-sqlite3',
-      database: 'smartfarm.db',
+      type: 'postgres',
+
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT),
+
+      username: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+
       autoLoadEntities: true,
       synchronize: true,
+
+      ssl: {
+        rejectUnauthorized: false,
+      },
     }),
 
     DevicesModule,
-    SensorReadingsModule, // 🔥 MOST IMPORTANT
+    SensorReadingsModule,
     CropsModule,
     AutoActionsModule,
   ],
 
-  controllers: [AppController], // ✅ keep this
-  providers: [AppService], // ✅ keep this
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}

@@ -11,6 +11,9 @@ export class AutoAction {
   @Column({ type: 'text' })
   action: string;
 
-  @Column({ type: 'datetime' })
+  @Column({
+    type: 'timestamp',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   createdAt: Date;
 }
