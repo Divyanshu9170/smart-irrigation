@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, CreateDateColumn } from 'typeorm';
 import { Device } from '../devices/device.entity';
 
 @Entity()
@@ -29,4 +29,8 @@ export class SensorReading {
 
   @ManyToOne(() => Device, (device) => device.readings, { eager: true })
   device: Device;
+
+  // 🔥 ONLY ADD THIS (DO NOT CHANGE OTHER CODE)
+  @CreateDateColumn()
+  createdAt: Date;
 }
