@@ -49,7 +49,7 @@ export default function Home() {
     const loadData = async () => {
       try {
         setError(null);
-        const response = await fetch("http://localhost:5000/sensor-readings");
+        const response = await fetch("https://smart-irrigation-1-mawh.onrender.com/sensor-readings");
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const sensorData = await response.json();
         if (Array.isArray(sensorData) && sensorData.length > 0) {
@@ -71,7 +71,7 @@ export default function Home() {
   useEffect(() => {
     const loadImages = async () => {
       try {
-        const response = await fetch("http://localhost:5000/sensor-readings/images");
+        const response = await fetch("https://smart-irrigation-1-mawh.onrender.com/sensor-readings/images");
         if (response.ok) {
           const imageData = await response.json();
           setImages(Array.isArray(imageData) ? imageData.reverse() : []);
@@ -86,7 +86,7 @@ export default function Home() {
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const response = await fetch("http://localhost:5000/sensor-readings/image-history");
+        const response = await fetch("https://smart-irrigation-1-mawh.onrender.com/sensor-readings/image-history");
         if (response.ok) {
           const histData = await response.json();
           if (Array.isArray(histData) && histData.length > 0) {
@@ -113,7 +113,7 @@ export default function Home() {
         reader.onloadend = () => { const result = reader.result as string; resolve(result.split(",")[1]); };
         reader.readAsDataURL(blob);
       });
-      const response = await fetch("http://localhost:5000/sensor-readings/upload-image", {
+      const response = await fetch("https://smart-irrigation-1-mawh.onrender.com/sensor-readings/upload-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: images[0].name, image: base64 }),
