@@ -9,6 +9,8 @@ import { AutoActionsModule } from './auto-actions/auto-actions.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { EmailModule } from './email/email.module';
+import { ContactModule } from './contact/contact.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { AppService } from './app.service';
     SensorReadingsModule,
     CropsModule,
     AutoActionsModule,
+    EmailModule,
+    ContactModule,
   ],
 
   controllers: [AppController],
