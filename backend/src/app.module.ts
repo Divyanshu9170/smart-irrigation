@@ -6,11 +6,11 @@ import { DevicesModule } from './devices/devices.module';
 import { SensorReadingsModule } from './sensor-readings/sensor-readings.module';
 import { CropsModule } from './crops/crops.module';
 import { AutoActionsModule } from './auto-actions/auto-actions.module';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { EmailModule } from './email/email.module';
-import { ContactModule } from './contact/contact.module';
 
 @Module({
   imports: [
@@ -40,8 +40,8 @@ import { ContactModule } from './contact/contact.module';
     SensorReadingsModule,
     CropsModule,
     AutoActionsModule,
-    EmailModule,
-    ContactModule,
+    UsersModule,
+    AuthModule,
   ],
 
   controllers: [AppController],
