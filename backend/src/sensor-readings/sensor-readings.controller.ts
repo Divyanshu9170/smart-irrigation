@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
 import { SensorReadingsService } from './sensor-readings.service';
 import { GeminiService } from '../gemini.service';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -17,16 +18,22 @@ export class SensorReadingsController {
   }
 
   // ✅ EXISTING - DO NOT TOUCH
+  // 🔓 Left public on purpose — this is the ESP32 ingestion endpoint.
+  // The hardware can't hold a user JWT session. See README for the
+  // planned device-level auth approach (Feature 4+).
   @Post()
   create(@Body() body: any) {
     return this.sensorService.create(body);
   }
 
-  // ✅ EXISTING - DO NOT TOUCH
+  // 🔒 Feature 3: now requires a logged-in user, and only returns
+  // readings from devices that user owns. Fallback dummy-data behavior
+  // is unchanged for empty/error cases.
+  @UseGuards(JwtAuthGuard)
   @Get()
-  async findAll(): Promise<any> {
+  async findAll(@Request() req: any): Promise<any> {
     try {
-      const data: any = await this.sensorService.findAll();
+      const data: any = await this.sensorService.findAllForUser(req.user.id);
       if (!data || !Array.isArray(data) || data.length === 0) {
         return [{ id: 1, temperature: 28, humidity: 60, ph: 6.5, soilMoisture: 45, nitrogen: 80, phosphorus: 60, potassium: 70, status: 'GOOD' }];
       }
