@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useAuth } from "../lib/auth-context";
 
 export default function Register() {
+  const { register } = useAuth();
   const [form, setForm] = useState({
     name: "", email: "", password: "", confirm: "",
   });
@@ -28,11 +30,15 @@ export default function Register() {
     }
     setError("");
     setLoading(true);
-    // Simulate register — connect your real auth API here
-    setTimeout(() => {
+    try {
+      await register(form.name, form.email, form.password);
+      // ✅ register() already returns a token, so the farmer is signed
+      // in immediately — no need to make them log in again.
+      window.location.href = "/";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed");
       setLoading(false);
-      window.location.href = "/login";
-    }, 1500);
+    }
   };
 
   return (

@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useAuth } from "../lib/auth-context";
 
 export default function Login() {
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -18,11 +20,13 @@ export default function Login() {
     }
     setError("");
     setLoading(true);
-    // Simulate login — connect your real auth API here
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await login(email, password);
       window.location.href = "/";
-    }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+      setLoading(false);
+    }
   };
 
   return (

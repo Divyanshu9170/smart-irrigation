@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth } from "./lib/auth-context";
+import { apiFetch, API_BASE_URL } from "./lib/api";
 
 type SensorData = {
   id: number;
@@ -23,6 +26,8 @@ type ImageHistory = {
 };
 
 export default function Home() {
+  const router = useRouter();
+  const { token, user, loading: authLoading, logout } = useAuth();
   const [data, setData] = useState<SensorData[]>([]);
   const [latest, setLatest] = useState<SensorData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +40,15 @@ export default function Home() {
   const [isOnline, setIsOnline] = useState(false);
   const [camPulse, setCamPulse] = useState(false);
 
+  // 🔒 Feature 4: dashboard now requires a logged-in user. Wait for the
+  // AuthProvider's initial localStorage check before deciding to redirect,
+  // so a real logged-in user isn't bounced during the first render.
+  useEffect(() => {
+    if (!authLoading && !token) {
+      router.push("/login");
+    }
+  }, [authLoading, token, router]);
+
   // ✅ ALL EXISTING LOGIC PRESERVED
   useEffect(() => {
     const interval = setInterval(() => {
@@ -46,10 +60,11 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (!token) return; // 🔒 /sensor-readings now requires auth — wait for login
     const loadData = async () => {
       try {
         setError(null);
-        const response = await fetch("https://smart-irrigation-1-mawh.onrender.com/sensor-readings");
+        const response = await apiFetch("/sensor-readings");
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const sensorData = await response.json();
         if (Array.isArray(sensorData) && sensorData.length > 0) {
@@ -66,12 +81,12 @@ export default function Home() {
     loadData();
     const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     const loadImages = async () => {
       try {
-        const response = await fetch("https://smart-irrigation-1-mawh.onrender.com/sensor-readings/images");
+        const response = await fetch(`${API_BASE_URL}/sensor-readings/images`);
         if (response.ok) {
           const imageData = await response.json();
           setImages(Array.isArray(imageData) ? imageData.reverse() : []);
@@ -86,7 +101,7 @@ export default function Home() {
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const response = await fetch("https://smart-irrigation-1-mawh.onrender.com/sensor-readings/image-history");
+        const response = await fetch(`${API_BASE_URL}/sensor-readings/image-history`);
         if (response.ok) {
           const histData = await response.json();
           if (Array.isArray(histData) && histData.length > 0) {
@@ -113,7 +128,7 @@ export default function Home() {
         reader.onloadend = () => { const result = reader.result as string; resolve(result.split(",")[1]); };
         reader.readAsDataURL(blob);
       });
-      const response = await fetch("https://smart-irrigation-1-mawh.onrender.com/sensor-readings/upload-image", {
+      const response = await fetch(`${API_BASE_URL}/sensor-readings/upload-image`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: images[0].name, image: base64 }),
@@ -516,7 +531,17 @@ export default function Home() {
           <Link href="/about" className="nav-a">About</Link>
           <Link href="/crop" className="nav-a">Crops</Link>
           <Link href="/contact" className="nav-a">Contact</Link>
-          <Link href="/login" className="nav-a">Login</Link>
+          {user ? (
+            <button
+              className="nav-a"
+              style={{ background: "none", border: "none", cursor: "pointer", font: "inherit" }}
+              onClick={() => { logout(); router.push("/login"); }}
+            >
+              Logout ({user.name})
+            </button>
+          ) : (
+            <Link href="/login" className="nav-a">Login</Link>
+          )}
         </div>
         <div className="nav-right">
           <div className="nav-pill">
