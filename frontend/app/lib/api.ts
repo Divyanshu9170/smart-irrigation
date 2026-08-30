@@ -2,8 +2,9 @@
 // Replaces the hardcoded "https://smart-irrigation-1-mawh.onrender.com"
 // that was previously repeated in app/page.tsx.
 
+
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "https://smart-irrigation-1-mawh.onrender.com";
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 const TOKEN_KEY = "agrosense_token";
 

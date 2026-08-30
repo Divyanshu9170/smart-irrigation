@@ -30,6 +30,11 @@ export class Device {
   @Column({ default: 'AUTO' })
   mode: string;
 
+  // 🔌 Feature 5 — current relay/pump state, toggled via manual controls
+  // or (in a future feature) automatically based on soil moisture.
+  @Column({ default: 'OFF' })
+  pumpStatus: string;
+
   // 🔗 Device belongs to one crop
   @ManyToOne(() => Crop, { eager: true })
   crop: Crop;

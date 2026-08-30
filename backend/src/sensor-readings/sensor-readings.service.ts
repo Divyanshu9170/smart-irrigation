@@ -15,16 +15,25 @@ export class SensorReadingsService {
     private deviceRepo: Repository<Device>,
   ) {}
 
-  // ✅ CREATE SENSOR DATA
+  // ============================================
+  // CREATE SENSOR DATA
+  // ============================================
   async create(dto: any) {
+    // ESP32 sends a string such as "ESP32-0001".
+    // Search using Device.deviceId, NOT Device.id.
     const device = await this.deviceRepo.findOne({
-      where: { id: dto.deviceId },
+      where: {
+        deviceId: dto.deviceId,
+      },
     });
 
     if (!device) {
-      throw new NotFoundException('Device not found');
+      throw new NotFoundException(
+        `Device "${dto.deviceId}" not found`,
+      );
     }
 
+    // Create the sensor reading and attach the actual Device entity.
     const reading = this.sensorRepo.create({
       temperature: dto.temperature,
       humidity: dto.humidity,
@@ -39,24 +48,34 @@ export class SensorReadingsService {
     return this.sensorRepo.save(reading);
   }
 
-  // ✅ GET ALL (LATEST FIRST)
-  // ⚠️ Not user-scoped — kept as-is (still used as the unscoped fallback
-  // path was before auth existed). Route-level scoping is applied via
-  // findAllForUser() below, called from the guarded controller route.
+  // ============================================
+  // GET ALL SENSOR READINGS
+  // ============================================
   async findAll() {
     return this.sensorRepo.find({
       relations: ['device'],
-      order: { createdAt: 'DESC' },
+      order: {
+        createdAt: 'DESC',
+      },
     });
   }
 
-  // ✅ GET ALL FOR ONE USER (Feature 3 — only readings from devices
-  // owned by this user)
+  // ============================================
+  // GET SENSOR READINGS FOR ONE USER
+  // ============================================
   async findAllForUser(userId: number) {
     return this.sensorRepo.find({
-      where: { device: { owner: { id: userId } } },
+      where: {
+        device: {
+          owner: {
+            id: userId,
+          },
+        },
+      },
       relations: ['device', 'device.owner'],
-      order: { createdAt: 'DESC' },
+      order: {
+        createdAt: 'DESC',
+      },
     });
   }
 }

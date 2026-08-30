@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, UseGuards, Request } from '@nestjs/common';
 import { DevicesService } from './devices.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
@@ -20,5 +20,17 @@ export class DevicesController {
   @Get()
   findAll(@Request() req: any) {
     return this.devicesService.findAllForUser(req.user.id);
+  }
+
+  // 🔌 Feature 5: manual pump/relay control. Ownership is verified in
+  // the service — a user can't toggle a pump on a device they don't own.
+  @UseGuards(JwtAuthGuard)
+  @Post(':id/pump')
+  setPump(
+    @Param('id') id: number,
+    @Body() body: { status: 'ON' | 'OFF' },
+    @Request() req: any,
+  ) {
+    return this.devicesService.setPumpStatus(id, body.status, req.user.id);
   }
 }

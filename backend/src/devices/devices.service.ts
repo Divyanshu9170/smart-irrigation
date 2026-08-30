@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Device } from './device.entity';
 import { Crop } from '../crops/crop.entity';
 import { User } from '../users/user.entity';
+import { AutoAction } from '../auto-actions/auto-action.entity';
 
 @Injectable()
 export class DevicesService {
@@ -17,6 +18,9 @@ export class DevicesService {
 
     @InjectRepository(User)
     private userRepository: Repository<User>,
+
+    @InjectRepository(AutoAction)
+    private autoActionRepository: Repository<AutoAction>,
   ) {}
 
   // ✅ CREATE DEVICE
@@ -85,5 +89,39 @@ export class DevicesService {
     if (result.affected === 0) {
       throw new NotFoundException('Device not found');
     }
+  }
+
+  // 🔌 Feature 5 — MANUAL PUMP CONTROL
+  // Verifies the device belongs to the requesting user, updates
+  // pumpStatus, and logs the toggle as an AutoAction so it shows up
+  // in the existing GET /auto-actions/:deviceId history.
+  async setPumpStatus(
+    id: number,
+    status: 'ON' | 'OFF',
+    userId: number,
+  ): Promise<Device> {
+    const device = await this.deviceRepository.findOne({
+      where: { id },
+      relations: ['owner'],
+    });
+
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    if (!device.owner || device.owner.id !== userId) {
+      throw new ForbiddenException('You do not own this device');
+    }
+
+    device.pumpStatus = status;
+    const updated = await this.deviceRepository.save(device);
+
+    await this.autoActionRepository.save({
+      deviceId: device.id,
+      action: `Pump turned ${status} (manual)`,
+      createdAt: new Date(),
+    });
+
+    return updated;
   }
 }

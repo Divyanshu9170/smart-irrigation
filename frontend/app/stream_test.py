@@ -2,7 +2,7 @@ import time
 import base64
 import requests
 
-IMAGE_URL = "http://10.219.43.164/capture"
+IMAGE_URL = "http://10.97.53.164/capture"
 BACKEND_URL = "http://localhost:5000/sensor-readings/upload-image"
 
 print("🚀 Starting image sender...")

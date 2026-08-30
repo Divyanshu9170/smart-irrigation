@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "./lib/auth-context";
-import { apiFetch, API_BASE_URL } from "./lib/api";
+import { apiFetch, API_BASE_URL, getToken } from "./lib/api";
 
 type SensorData = {
   id: number;
@@ -19,10 +19,31 @@ type SensorData = {
   createdAt: string;
 };
 
+// 🤖 Feature 6 — shape returned by POST /ai/analyze
+type AiAnalysisResult = {
+  disease: string;
+  confidence: number;
+  severity: "LOW" | "MEDIUM" | "HIGH";
+  recommendation: string;
+  fertilizerSuggestion: string;
+  wateringSuggestion: string;
+  imageUrl?: string;
+};
+
 type ImageHistory = {
   image: string;
   disease: string;
   time: string;
+};
+
+// 🔌 Feature 5 — device shape returned by GET /devices, needed for pump control
+type DeviceType = {
+  id: number;
+  deviceId: string;
+  name: string;
+  location: string;
+  mode: string;
+  pumpStatus: string;
 };
 
 export default function Home() {
@@ -32,13 +53,26 @@ export default function Home() {
   const [latest, setLatest] = useState<SensorData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<{ name: string; url: string }[]>([]);
-  const [imgSrc, setImgSrc] = useState("https://via.placeholder.com/500x300?text=Camera+Offline");
+  const [imgSrc, setImgSrc] = useState("");
   const [imageHistory, setImageHistory] = useState<ImageHistory[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [latestDisease, setLatestDisease] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [isOnline, setIsOnline] = useState(false);
   const [camPulse, setCamPulse] = useState(false);
+  // 🔌 Feature 5 — this user's devices (for pump status) + loading flag
+  const [devices, setDevices] = useState<DeviceType[]>([]);
+  const [pumpLoading, setPumpLoading] = useState(false);
+
+  // 🤖 Feature 6 — local file upload AI analysis (separate from the
+  // existing camera-based analyzeLatestImage() flow below, which is
+  // left completely untouched)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [aiResult, setAiResult] = useState<AiAnalysisResult | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiUploadHistory, setAiUploadHistory] = useState<AiAnalysisResult[]>([]);
 
   // 🔒 Feature 4: dashboard now requires a logged-in user. Wait for the
   // AuthProvider's initial localStorage check before deciding to redirect,
@@ -50,14 +84,25 @@ export default function Home() {
   }, [authLoading, token, router]);
 
   // ✅ ALL EXISTING LOGIC PRESERVED
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setImgSrc(`http://10.219.43.164/capture?t=${Date.now()}`);
-      setCamPulse(true);
-      setTimeout(() => setCamPulse(false), 600);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const CAMERA_URL = "http://10.97.53.164";
+
+const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+const requestNextImage = () => {
+ setImgSrc(`${CAMERA_URL}/capture?t=${Date.now()}`);
+  setCamPulse(true);
+
+  setTimeout(() => setCamPulse(false), 600);
+};
+useEffect(() => {
+    requestNextImage();
+
+    return () => {
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+        }
+    };
+}, []);
 
   useEffect(() => {
     if (!token) return; // 🔒 /sensor-readings now requires auth — wait for login
@@ -82,6 +127,88 @@ export default function Home() {
     const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
   }, [token]);
+
+  // 🔌 Feature 5 — load this user's devices (needed to show/toggle pump status)
+  useEffect(() => {
+    if (!token) return;
+    const loadDevices = async () => {
+      try {
+        const response = await apiFetch("/devices");
+        if (response.ok) {
+          const deviceData = await response.json();
+          if (Array.isArray(deviceData)) setDevices(deviceData);
+        }
+      } catch (err) { console.log("Could not load devices:", err); }
+    };
+    loadDevices();
+    const interval = setInterval(loadDevices, 10000);
+    return () => clearInterval(interval);
+  }, [token]);
+
+  // 🔌 Feature 5 — toggle the pump on the user's first device
+  const togglePump = async () => {
+    const device = devices[0];
+    if (!device) {
+      alert("No device found. Add a device to your account first.");
+      return;
+    }
+    setPumpLoading(true);
+    try {
+      const newStatus = device.pumpStatus === "ON" ? "OFF" : "ON";
+      const response = await apiFetch(`/devices/${device.id}/pump`, {
+        method: "POST",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const updated = await response.json();
+      setDevices((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+    } catch (err) {
+      console.error("Pump toggle failed:", err);
+      alert("❌ Could not update pump status.");
+    } finally {
+      setPumpLoading(false);
+    }
+  };
+
+  // 🤖 Feature 6 — upload a locally-selected image to POST /ai/analyze
+  const analyzeUploadedImage = async (file: File) => {
+    setAiAnalyzing(true);
+    setAiError(null);
+    setAiResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+
+      const token = getToken();
+      const response = await fetch(`${API_BASE_URL}/ai/analyze`, {
+        method: "POST",
+        // ⚠️ Do NOT set Content-Type here — the browser needs to set
+        // the multipart/form-data boundary itself.
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.message || `HTTP ${response.status}`);
+      }
+
+      const result: AiAnalysisResult = await response.json();
+      setAiResult(result);
+      setAiUploadHistory((prev) => [result, ...prev].slice(0, 5));
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Analysis failed. Please try again.");
+    } finally {
+      setAiAnalyzing(false);
+      setAiModalOpen(true);
+    }
+  };
+
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset so selecting the same file again still triggers onChange
+    if (file) analyzeUploadedImage(file);
+  };
 
   useEffect(() => {
     const loadImages = async () => {
@@ -650,7 +777,14 @@ export default function Home() {
                 <div className="c-title"><div className="c-dot" style={{ background: "var(--amber)" }}></div>Manual Controls</div>
               </div>
               <div className="ctrl-row">
-                <button className="ctrl-btn">💧 Irrigation</button>
+                <button
+                  className="ctrl-btn"
+                  onClick={togglePump}
+                  disabled={pumpLoading || !devices[0]}
+                  style={devices[0]?.pumpStatus === "ON" ? { background: "var(--green-dim)", borderColor: "rgba(74,222,128,0.3)", color: "var(--green)" } : undefined}
+                >
+                  {pumpLoading ? "⏳ Updating..." : devices[0]?.pumpStatus === "ON" ? "💧 Pump ON — tap to stop" : "💧 Irrigation"}
+                </button>
                 <button className="ctrl-btn">❄️ Cooling</button>
                 <button className="ctrl-btn">🌿 Fertilizer</button>
               </div>
@@ -671,6 +805,27 @@ export default function Home() {
                   }}
                 >
                   {analyzing ? "⏳ Analyzing..." : "🤖 Analyze with AI"}
+                </button>
+                {/* 🤖 Feature 6 — analyze an image picked from your own computer */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelected}
+                  style={{ display: "none" }}
+                />
+                <button
+                  className="analyze-btn"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={aiAnalyzing}
+                  style={{
+                    background: aiAnalyzing ? "var(--surface)" : "var(--surface2)",
+                    color: aiAnalyzing ? "var(--text3)" : "var(--text2)",
+                    border: "1px solid var(--border)",
+                    marginLeft: 8,
+                  }}
+                >
+                  {aiAnalyzing ? "⏳ Uploading..." : "📤 Upload from Device"}
                 </button>
               </div>
               <div className="img-grid">
@@ -693,12 +848,25 @@ export default function Home() {
               <span style={{ fontSize: 10, color: "var(--red)", fontFamily: "var(--mono)", fontWeight: 700 }}>● LIVE</span>
             </div>
             <div className="cam-wrap">
-              <img
-                src={imgSrc}
-                alt="Live camera"
-                className={`cam-img ${camPulse ? "cam-flash" : ""}`}
-                onError={() => setImgSrc("https://via.placeholder.com/640x360?text=Camera+Offline")}
-              />
+             <img
+  src={imgSrc}
+  alt="Live camera"
+  className={`cam-img ${camPulse ? "cam-flash" : ""}`}
+  onLoad={() => {
+    setIsOnline(true);
+
+    timeoutRef.current = setTimeout(() => {
+      requestNextImage();
+    }, 3000);
+  }}
+  onError={() => {
+    setIsOnline(false);
+
+    timeoutRef.current = setTimeout(() => {
+      requestNextImage();
+    }, 3000);
+  }}
+/>
               <div className="cam-badge"><span className="live-dot"></span>LIVE MONITORING</div>
             </div>
             <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -812,6 +980,65 @@ export default function Home() {
         <div className="foot">
           AgroSense Smart Irrigation Platform · Next.js + NestJS + Gemini AI · India 🇮🇳
         </div>
+
+        {/* 🤖 Feature 6 — AI analysis result modal (local file upload path) */}
+        {aiModalOpen && (
+          <div
+            onClick={() => setAiModalOpen(false)}
+            style={{
+              position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              zIndex: 200, padding: 20,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: "var(--bg2)", border: "1px solid var(--border)",
+                borderRadius: 16, padding: 24, maxWidth: 440, width: "100%",
+                maxHeight: "85vh", overflowY: "auto",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <div className="c-title"><div className="c-dot" style={{ background: "#a78bfa" }}></div>AI Analysis Result</div>
+                <button
+                  onClick={() => setAiModalOpen(false)}
+                  style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 18 }}
+                >✕</button>
+              </div>
+
+              {aiError ? (
+                <div style={{ color: "var(--red, #f87171)", fontSize: 13.5, lineHeight: 1.6 }}>
+                  ⚠️ {aiError}
+                </div>
+              ) : aiResult ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {aiResult.imageUrl && (
+                    <img src={aiResult.imageUrl} alt="Analyzed plant" style={{ width: "100%", borderRadius: 10, maxHeight: 200, objectFit: "cover" }} />
+                  )}
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{aiResult.disease}</div>
+                    <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+                      Confidence: {Math.round(aiResult.confidence * 100)}% · Severity: {aiResult.severity}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1 }}>Recommendation</div>
+                    <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 4 }}>{aiResult.recommendation}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1 }}>Fertilizer</div>
+                    <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 4 }}>{aiResult.fertilizerSuggestion}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1 }}>Watering</div>
+                    <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 4 }}>{aiResult.wateringSuggestion}</div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

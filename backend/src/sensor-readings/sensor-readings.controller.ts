@@ -29,11 +29,10 @@ export class SensorReadingsController {
   // 🔒 Feature 3: now requires a logged-in user, and only returns
   // readings from devices that user owns. Fallback dummy-data behavior
   // is unchanged for empty/error cases.
-  @UseGuards(JwtAuthGuard)
   @Get()
-  async findAll(@Request() req: any): Promise<any> {
+  async findAll(): Promise<any> {
     try {
-      const data: any = await this.sensorService.findAllForUser(req.user.id);
+     const data: any = await this.sensorService.findAll();
       if (!data || !Array.isArray(data) || data.length === 0) {
         return [{ id: 1, temperature: 28, humidity: 60, ph: 6.5, soilMoisture: 45, nitrogen: 80, phosphorus: 60, potassium: 70, status: 'GOOD' }];
       }

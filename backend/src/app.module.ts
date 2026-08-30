@@ -8,6 +8,7 @@ import { CropsModule } from './crops/crops.module';
 import { AutoActionsModule } from './auto-actions/auto-actions.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { AiModule } from './ai/ai.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -42,6 +43,7 @@ import { AppService } from './app.service';
     AutoActionsModule,
     UsersModule,
     AuthModule,
+    AiModule,
   ],
 
   controllers: [AppController],

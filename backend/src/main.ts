@@ -11,6 +11,9 @@ async function bootstrap() {
   // 🔥 Serve images folder
   app.use('/images', express.static(path.join(process.cwd(), 'images')));
 
+  // 🤖 Feature 6 — serve uploads folder (AI analysis images)
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+
   await app.listen(5000, '0.0.0.0');
 }
 
