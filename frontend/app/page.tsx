@@ -69,6 +69,7 @@ export default function Home() {
   const [relayHistory, setRelayHistory] = useState<{ id: number; action: string; createdAt: string }[]>([]);
   const [relayLoadingKey, setRelayLoadingKey] = useState<string | null>(null);
   const [relayError, setRelayError] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<"ALL" | "GOOD" | "ALERT">("ALL");
 
   // 🤖 Feature 6 — local file upload AI analysis (separate from the
   // existing camera-based analyzeLatestImage() flow below, which is
@@ -631,176 +632,271 @@ export default function Home() {
           display: flex; align-items: center; gap: 8px;
         }
         .sec-head-txt::before { content: ''; width: 3px; height: 13px; border-radius: 2px; background: var(--green); display: inline-block; }
-        .sec-head-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border), transparent); }
+        .sec-head-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border2), transparent); }
 
         /* ── SENSOR GRID ── */
-        .sensor-strip { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 12px; }
-        @media(max-width:1180px){ .sensor-strip{ grid-template-columns: repeat(4,minmax(0,1fr)); } }
-        @media(max-width:640px){ .sensor-strip{ grid-template-columns: repeat(2,minmax(0,1fr)); } }
+        .sensor-strip { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 14px; }
+        @media(max-width:1200px){ .sensor-strip{ grid-template-columns: repeat(4,minmax(0,1fr)); } }
+        @media(max-width:720px){ .sensor-strip{ grid-template-columns: repeat(2,minmax(0,1fr)); } }
 
         .s-card {
-          background: linear-gradient(160deg, var(--bg2) 0%, var(--bg3) 130%);
+          background: linear-gradient(145deg, rgba(16,24,39,0.72) 0%, rgba(9,15,28,0.85) 100%);
           border: 1px solid var(--border);
-          border-radius: 16px; padding: 17px 15px;
+          border-radius: 18px; padding: 18px 16px;
           position: relative; overflow: hidden;
-          transition: border-color 0.25s, transform 0.25s, box-shadow 0.25s;
+          backdrop-filter: blur(14px);
+          transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 4px 20px -2px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
         }
-        .s-card:hover { border-color: var(--border2); transform: translateY(-4px); box-shadow: 0 12px 28px rgba(0,0,0,0.35); }
+        .s-card:hover {
+          border-color: var(--accent-color, var(--green));
+          transform: translateY(-5px);
+          box-shadow: 0 16px 36px -6px rgba(0,0,0,0.5), 0 0 24px -6px var(--accent-color, var(--green));
+        }
+        .s-card::before {
+          content: ''; position: absolute; inset: 0;
+          background: radial-gradient(circle at 10% 0%, var(--accent-color, var(--green)) 0%, transparent 60%);
+          opacity: 0.08; pointer-events: none;
+        }
         .s-card::after {
-          content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2.5px;
-          background: var(--accent-color, var(--green)); opacity: 0.7;
+          content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+          background: linear-gradient(90deg, var(--accent-color, var(--green)), transparent);
+          opacity: 0.85;
         }
-        .s-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+        .s-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
         .s-icon {
-          font-size: 17px; width: 32px; height: 32px; border-radius: 9px;
-          background: var(--surface2); display: flex; align-items: center; justify-content: center;
+          font-size: 18px; width: 34px; height: 34px; border-radius: 10px;
+          background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center;
+          border: 1px solid rgba(255,255,255,0.08);
+          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
         }
-        .s-badge { font-size: 9px; font-weight: 700; padding: 3px 8px; border-radius: 100px; font-family: var(--mono); letter-spacing: 0.4px; }
-        .s-lbl { font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-        .s-val { font-size: 21px; font-weight: 800; font-family: var(--mono); margin-bottom: 11px; }
-        .s-bar { height: 4px; background: var(--border); border-radius: 10px; overflow: hidden; }
-        .s-fill { height: 100%; border-radius: 10px; transition: width 0.9s cubic-bezier(.2,.8,.2,1); }
+        .s-badge {
+          font-size: 9.5px; font-weight: 700; padding: 3px 9px; border-radius: 100px;
+          font-family: var(--mono); letter-spacing: 0.4px;
+          border: 1px solid currentColor;
+        }
+        .s-lbl { font-size: 10px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+        .s-val { font-size: 23px; font-weight: 800; font-family: var(--mono); margin-bottom: 10px; letter-spacing: -0.5px; }
+        .s-range { display: flex; justify-content: space-between; font-size: 9px; color: var(--text3); font-family: var(--mono); margin-bottom: 6px; }
+        .s-bar { height: 5px; background: rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden; position: relative; }
+        .s-fill { height: 100%; border-radius: 10px; transition: width 0.9s cubic-bezier(.2,.8,.2,1); position: relative; }
+        .s-fill::after {
+          content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px;
+          background: #fff; filter: blur(2px); opacity: 0.8;
+        }
 
         /* ── MAIN GRID ── */
-        .mg { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 20px; align-items: start; }
+        .mg { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,0.85fr); gap: 22px; align-items: start; }
         @media(max-width:960px){ .mg{ grid-template-columns:minmax(0,1fr); } }
 
         /* ── CARD ── */
         .c {
-          background: linear-gradient(165deg, var(--bg2) 0%, var(--bg3) 140%);
+          background: linear-gradient(160deg, rgba(16,24,39,0.78) 0%, rgba(9,15,28,0.92) 140%);
           border: 1px solid var(--border);
-          border-radius: var(--radius); padding: 22px;
-          backdrop-filter: blur(6px);
-          transition: border-color 0.25s, box-shadow 0.25s;
+          border-radius: var(--radius); padding: 24px;
+          backdrop-filter: blur(14px);
+          transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
+          box-shadow: 0 8px 32px 0 rgba(0,0,0,0.37), inset 0 1px 0 rgba(255,255,255,0.06);
         }
         .c:hover { border-color: var(--border2); }
         .c-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 8px; }
-        .c-title { font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 1.1px; display: flex; align-items: center; gap: 8px; }
-        .c-dot { width: 6px; height: 6px; border-radius: 50%; }
+        .c-title { font-size: 11.5px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 1.2px; display: flex; align-items: center; gap: 9px; }
+        .c-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 
         /* ── FARM INTELLIGENCE ── */
-        .intel-status { font-size: 32px; font-weight: 800; font-family: var(--mono); letter-spacing: -0.6px; margin-bottom: 5px; }
-        .intel-sub { font-size: 11px; color: var(--text3); margin-bottom: 15px; }
+        .intel-status { font-size: 34px; font-weight: 800; font-family: var(--mono); letter-spacing: -0.6px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
+        .intel-sub { font-size: 11.5px; color: var(--text3); margin-bottom: 16px; font-weight: 500; }
         .intel-rec {
-          display: flex; align-items: flex-start; gap: 11px;
-          padding: 14px 16px; border-radius: 12px;
-          background: var(--surface); border: 1px solid var(--border);
-          font-size: 13px; color: var(--text2); line-height: 1.6;
+          display: flex; align-items: flex-start; gap: 12px;
+          padding: 16px 18px; border-radius: 14px;
+          background: rgba(255,255,255,0.035); border: 1px solid var(--border2);
+          font-size: 13.5px; color: var(--text2); line-height: 1.6;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
         }
-        .intel-rec-icon { font-size: 17px; flex-shrink: 0; margin-top: 1px; }
+        .intel-rec-icon { font-size: 20px; flex-shrink: 0; }
 
-        /* ── MANUAL CONTROLS ── */
-        .ctrl-row { display: flex; gap: 11px; flex-wrap: wrap; }
-        .ctrl-btn {
-          display: flex; align-items: center; gap: 8px;
-          padding: 12px 18px; border-radius: 12px; cursor: pointer;
-          border: 1px solid var(--border); background: var(--surface);
-          color: var(--text2); font-size: 13px; font-weight: 600; font-family: var(--font);
-          transition: all 0.22s;
+        /* ── MANUAL CONTROLS — CYBER SWITCH TILES ── */
+        .ctrl-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 11px; }
+        @media(max-width:540px){ .ctrl-row{ grid-template-columns: minmax(0,1fr); } }
+
+        .ctrl-tile {
+          display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          padding: 14px 16px; border-radius: 14px; cursor: pointer; text-align: left;
+          border: 1px solid var(--border); background: rgba(255,255,255,0.03);
+          color: var(--text); font-family: var(--font);
+          transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 2px 10px rgba(0,0,0,0.25);
         }
-        .ctrl-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--green); transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
-        .ctrl-btn:active { transform: translateY(0); }
+        .ctrl-tile:hover:not(:disabled) {
+          border-color: var(--border2);
+          background: rgba(255,255,255,0.06);
+          transform: translateY(-2px);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+        }
+        .ctrl-tile:active:not(:disabled) { transform: translateY(0); }
+        .ctrl-tile:disabled { opacity: 0.55; cursor: not-allowed; }
 
-        /* ── CAMERA ── */
+        .ctrl-tile.is-on {
+          background: linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(5,150,105,0.1) 100%);
+          border-color: rgba(52,211,153,0.5);
+          box-shadow: 0 0 20px rgba(16,185,129,0.25), inset 0 1px 0 rgba(52,211,153,0.3);
+        }
+
+        .ctrl-icon-box {
+          width: 38px; height: 38px; border-radius: 10px;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 19px; background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.08); flex-shrink: 0;
+          transition: transform 0.2s;
+        }
+        .ctrl-tile.is-on .ctrl-icon-box {
+          background: rgba(52,211,153,0.2);
+          border-color: rgba(52,211,153,0.4);
+          transform: scale(1.05);
+        }
+
+        .switch-capsule {
+          padding: 5px 10px; border-radius: 100px;
+          font-family: var(--mono); font-size: 10.5px; font-weight: 700;
+          display: flex; align-items: center; gap: 6px;
+          border: 1px solid var(--border); background: rgba(0,0,0,0.4);
+          color: var(--text3); transition: all 0.22s;
+        }
+        .ctrl-tile.is-on .switch-capsule {
+          background: rgba(16,185,129,0.25);
+          border-color: rgba(52,211,153,0.6);
+          color: #ecfdf5;
+          box-shadow: 0 0 10px rgba(52,211,153,0.3);
+        }
+        .switch-indicator {
+          width: 7px; height: 7px; border-radius: 50%;
+          background: var(--text3); transition: all 0.22s;
+        }
+        .ctrl-tile.is-on .switch-indicator {
+          background: var(--green);
+          box-shadow: 0 0 8px var(--green);
+          animation: blink 1.4s infinite;
+        }
+
+        /* ── CAMERA HUD ── */
         .cam-wrap {
-          position: relative; border-radius: 14px; overflow: hidden; background: #000;
+          position: relative; border-radius: 16px; overflow: hidden; background: #000;
           aspect-ratio: 16/9;
           border: 1px solid var(--border2);
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+          box-shadow: 0 12px 36px rgba(0,0,0,0.6);
         }
+        .cam-corner {
+          position: absolute; width: 14px; height: 14px; border-color: rgba(45,212,191,0.6); border-style: solid; z-index: 5; pointer-events: none;
+        }
+        .cam-corner.tl { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
+        .cam-corner.tr { top: 10px; right: 10px; border-width: 2px 2px 0 0; }
+        .cam-corner.bl { bottom: 10px; left: 10px; border-width: 0 0 2px 2px; }
+        .cam-corner.br { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
+
         .cam-img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.3s; }
-        .cam-connecting { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 12.5px; gap: 8px; }
+        .cam-connecting { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 13px; gap: 8px; }
         .cam-badge {
           position: absolute; top: 13px; left: 13px;
-          display: flex; align-items: center; gap: 6px;
-          background: rgba(0,0,0,0.68); backdrop-filter: blur(10px);
-          border: 1px solid rgba(248,113,113,0.32);
-          padding: 6px 13px; border-radius: 100px;
+          display: flex; align-items: center; gap: 7px;
+          background: rgba(0,0,0,0.72); backdrop-filter: blur(12px);
+          border: 1px solid rgba(248,113,113,0.4);
+          padding: 6px 14px; border-radius: 100px;
           font-size: 10px; color: #fca5a5; font-weight: 700; letter-spacing: 1px;
         }
         .cam-status-badge {
           position: absolute; top: 13px; right: 13px;
-          display: flex; align-items: center; gap: 6px;
-          background: rgba(0,0,0,0.68); backdrop-filter: blur(10px);
+          display: flex; align-items: center; gap: 7px;
+          background: rgba(0,0,0,0.72); backdrop-filter: blur(12px);
           border: 1px solid var(--border2);
-          padding: 6px 12px; border-radius: 100px;
+          padding: 6px 13px; border-radius: 100px;
           font-size: 10px; font-weight: 700; letter-spacing: 0.6px;
         }
-        .live-dot { width: 5px; height: 5px; border-radius: 50%; background: #f87171; animation: blink 1.2s infinite; }
+        .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #f87171; animation: blink 1.2s infinite; }
         .cam-flash { animation: camFlash 0.5s ease; }
         .cam-live-ring {
           width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: glowPulse 1.8s infinite;
         }
         .cam-meta-grid { margin-top: 14px; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }
         .cam-meta {
-          background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 11px 13px;
-          transition: border-color 0.2s;
+          background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+          transition: border-color 0.2s, transform 0.2s;
         }
-        .cam-meta:hover { border-color: var(--border2); }
-        .cam-meta-lbl { font-size: 9.5px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 5px; }
-        .cam-meta-val { font-size: 13px; color: var(--text); font-family: var(--mono); font-weight: 500; }
+        .cam-meta:hover { border-color: var(--border2); transform: translateY(-1px); }
+        .cam-meta-lbl { font-size: 9.5px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 5px; }
+        .cam-meta-val { font-size: 13.5px; color: var(--text); font-family: var(--mono); font-weight: 600; }
 
         /* ── IMAGE GRID ── */
-        .img-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 9px; margin-top: 15px; }
-        .img-thumb { border-radius: 11px; overflow: hidden; aspect-ratio: 1; border: 1px solid var(--border); cursor: pointer; transition: all 0.22s; }
-        .img-thumb:hover { transform: scale(1.045); border-color: var(--green); box-shadow: 0 8px 22px rgba(0,0,0,0.35); }
+        .img-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 15px; }
+        .img-thumb { border-radius: 12px; overflow: hidden; aspect-ratio: 1; border: 1px solid var(--border); cursor: pointer; transition: all 0.24s; }
+        .img-thumb:hover { transform: scale(1.05); border-color: var(--green); box-shadow: 0 10px 24px rgba(0,0,0,0.4); }
         .img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .img-skel { border-radius: 11px; aspect-ratio: 1; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+        .img-skel { border-radius: 12px; aspect-ratio: 1; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
 
         /* ── ANALYZE BTN ── */
         .analyze-btn {
-          padding: 10px 18px; border-radius: 11px; border: none; cursor: pointer;
+          padding: 10px 18px; border-radius: 12px; border: none; cursor: pointer;
           font-size: 12.5px; font-weight: 700; font-family: var(--font);
-          display: flex; align-items: center; gap: 6px;
+          display: flex; align-items: center; gap: 7px;
           transition: all 0.22s;
         }
-        .analyze-btn:hover:not(:disabled) { transform: translateY(-2px); }
+        .analyze-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139,92,246,0.4); }
         .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ── AI SECTION ── */
-        .ai-banner { border-radius: 14px; padding: 18px 20px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-        .ai-name { font-size: 18px; font-weight: 800; }
-        .ai-sev { padding: 5px 15px; border-radius: 100px; font-size: 11px; font-weight: 700; font-family: var(--mono); letter-spacing: 0.5px; }
-        .ai-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 11px; }
+        .ai-banner { border-radius: 16px; padding: 20px 22px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
+        .ai-name { font-size: 19px; font-weight: 800; letter-spacing: -0.3px; }
+        .ai-sev { padding: 5px 16px; border-radius: 100px; font-size: 11px; font-weight: 700; font-family: var(--mono); letter-spacing: 0.6px; }
+        .ai-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
         @media(max-width:500px){ .ai-grid{ grid-template-columns:minmax(0,1fr); } }
-        .ai-c { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 15px; }
-        .ai-c-lbl { font-size: 9.5px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
-        .ai-c-txt { font-size: 13px; color: var(--text2); line-height: 1.65; }
-        .ai-empty { text-align: center; padding: 44px 20px; color: var(--text3); }
-        .ai-empty-icon { font-size: 46px; margin-bottom: 13px; filter: grayscale(0.3); opacity: 0.7; }
+        .ai-c { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+        .ai-c-lbl { font-size: 10px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 1.1px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+        .ai-c-txt { font-size: 13.5px; color: var(--text2); line-height: 1.65; }
+        .ai-empty { text-align: center; padding: 48px 20px; color: var(--text3); }
+        .ai-empty-icon { font-size: 48px; margin-bottom: 14px; filter: grayscale(0.2); }
 
         /* ── BOTTOM GRID ── */
-        .bg2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap: 20px; margin-top: 20px; }
+        .bg2 { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr) minmax(0,0.8fr); gap: 22px; margin-top: 22px; }
         @media(max-width:1180px){ .bg2{ grid-template-columns: minmax(0,1fr) minmax(0,1fr); } }
-        @media(max-width:700px){ .bg2{ grid-template-columns:minmax(0,1fr); } }
+        @media(max-width:760px){ .bg2{ grid-template-columns:minmax(0,1fr); } }
 
         .h-row {
-          display: flex; align-items: center; gap: 11px;
-          padding: 10px 13px; border-radius: 11px;
-          background: var(--surface); border: 1px solid var(--border);
+          display: flex; align-items: center; gap: 12px;
+          padding: 12px 14px; border-radius: 12px;
+          background: rgba(255,255,255,0.03); border: 1px solid var(--border);
           margin-bottom: 8px; font-size: 12.5px; color: var(--text2);
-          transition: border-color 0.2s, transform 0.2s;
+          transition: all 0.22s;
         }
-        .h-row:hover { border-color: var(--border2); transform: translateX(2px); }
-        .h-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-        .h-val { font-family: var(--mono); font-size: 12px; }
-        .h-tag { margin-left: auto; font-size: 9px; font-weight: 700; padding: 3px 9px; border-radius: 100px; font-family: var(--mono); }
+        .h-row:hover { border-color: var(--border2); transform: translateX(3px); background: rgba(255,255,255,0.05); }
+        .h-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 6px currentColor; }
+        .h-val { font-family: var(--mono); font-size: 12px; color: var(--text); }
+        .h-tag { margin-left: auto; font-size: 9.5px; font-weight: 700; padding: 3px 10px; border-radius: 100px; font-family: var(--mono); }
+
+        .filter-tabs { display: flex; gap: 6px; }
+        .filter-btn {
+          font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 8px;
+          border: 1px solid var(--border); background: rgba(255,255,255,0.03);
+          color: var(--text3); cursor: pointer; transition: all 0.2s; font-family: var(--mono);
+        }
+        .filter-btn:hover { color: var(--text); border-color: var(--border2); }
+        .filter-btn.active {
+          background: var(--green-dim); border-color: var(--green); color: var(--green);
+        }
 
         .al-row {
-          display: flex; align-items: center; gap: 11px;
-          padding: 11px 13px; border-radius: 11px;
-          background: var(--surface); border: 1px solid var(--border);
-          margin-bottom: 8px; transition: border-color 0.2s, transform 0.2s;
-          border-left-width: 3px;
+          display: flex; align-items: center; gap: 12px;
+          padding: 12px 14px; border-radius: 12px;
+          background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+          margin-bottom: 8px; transition: all 0.22s;
+          border-left-width: 4px;
         }
-        .al-row:hover { border-color: var(--border2); transform: translateX(2px); }
+        .al-row:hover { border-color: var(--border2); transform: translateX(3px); background: rgba(255,255,255,0.05); }
         .al-name { font-size: 13px; color: var(--text); font-weight: 600; margin-bottom: 2px; }
         .al-time { font-size: 11px; color: var(--text3); }
-        .al-badge { margin-left: auto; font-size: 9px; font-weight: 700; padding: 3px 10px; border-radius: 100px; font-family: var(--mono); white-space: nowrap; }
+        .al-badge { margin-left: auto; font-size: 9.5px; font-weight: 700; padding: 3px 10px; border-radius: 100px; font-family: var(--mono); white-space: nowrap; }
 
-        .err { background: var(--red-dim); border: 1px solid rgba(248,113,113,0.22); color: #fca5a5; padding: 13px 17px; border-radius: 12px; margin-bottom: 18px; font-size: 13px; display: flex; align-items: center; gap: 9px; }
+        .err { background: var(--red-dim); border: 1px solid rgba(248,113,113,0.22); color: #fca5a5; padding: 13px 17px; border-radius: 14px; margin-bottom: 18px; font-size: 13px; display: flex; align-items: center; gap: 9px; }
 
-        .foot { text-align: center; padding: 30px 0 18px; font-size: 11px; color: var(--text3); border-top: 1px solid var(--border); margin-top: 12px; }
+        .foot { text-align: center; padding: 34px 0 20px; font-size: 11.5px; color: var(--text3); border-top: 1px solid var(--border); margin-top: 18px; }
       `}</style>
 
       <div className="ambient" aria-hidden="true">
@@ -902,6 +998,10 @@ export default function Home() {
                   </div>
                   <div className="s-lbl">{s.label}</div>
                   <div className="s-val" style={{ color: st.color }}>{s.value}<span style={{ fontSize: 11, fontWeight: 500, color: "var(--text3)", marginLeft: 3 }}>{s.unit}</span></div>
+                  <div className="s-range">
+                    <span>Min {s.low}{s.unit}</span>
+                    <span>Max {s.high}{s.unit}</span>
+                  </div>
                   <div className="s-bar"><div className="s-fill" style={{ width: `${pct}%`, background: st.color }}></div></div>
                 </div>
               );
@@ -949,27 +1049,34 @@ export default function Home() {
               )}
               <div className="ctrl-row">
                 {[
-                  { key: "nitrogen", icon: "💧", label: "N Water Supply" },
-                  { key: "phosphorus", icon: "💧", label: "P Water Supply" },
-                  { key: "potassium", icon: "💧", label: "K Water Supply" },
-                  { key: "water", icon: "🚿", label: "Main Water Supply" },
-                  { key: "fan", icon: "🌀", label: "Fan" },
-                  { key: "bulb", icon: "💡", label: "Bulb" },
+                  { key: "nitrogen", icon: "🧪", label: "N Water Supply", sub: "Nitrogen injector" },
+                  { key: "phosphorus", icon: "⚗️", label: "P Water Supply", sub: "Phosphorus feed" },
+                  { key: "potassium", icon: "💎", label: "K Water Supply", sub: "Potassium dosage" },
+                  { key: "water", icon: "🚿", label: "Main Water Supply", sub: "Primary drip line" },
+                  { key: "fan", icon: "🌀", label: "Exhaust Fan", sub: "Air circulation" },
+                  { key: "bulb", icon: "💡", label: "Growth Bulb", sub: "Photosynthesis lighting" },
                 ].map((r) => {
                   const isOn = relayStatus?.[r.key] === "ON";
                   const isLoading = relayLoadingKey === r.key;
                   return (
                     <button
                       key={r.key}
-                      className="ctrl-btn"
+                      className={`ctrl-tile ${isOn ? "is-on" : ""}`}
                       onClick={() => toggleRelay(r.key)}
                       disabled={isLoading || !devices[0]}
-                      style={isOn ? { background: "var(--green-dim)", borderColor: "rgba(52,211,153,0.35)", color: "var(--green)" } : undefined}
+                      type="button"
                     >
-                      {r.icon} {r.label}
-                      <span style={{ marginLeft: 8, fontSize: 10, fontFamily: "var(--mono)", fontWeight: 700, opacity: 0.85 }}>
-                        {isLoading ? "..." : isOn ? "[ ON ]" : "[ OFF ]"}
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                        <div className="ctrl-icon-box">{r.icon}</div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{r.label}</div>
+                          <div style={{ fontSize: 10.5, color: "var(--text3)", marginTop: 2 }}>{r.sub}</div>
+                        </div>
+                      </div>
+                      <div className="switch-capsule">
+                        <span className="switch-indicator"></span>
+                        {isLoading ? "SYNC..." : isOn ? "ACTIVE" : "STANDBY"}
+                      </div>
                     </button>
                   );
                 })}
@@ -1059,6 +1166,10 @@ export default function Home() {
               </span>
             </div>
             <div className="cam-wrap">
+              <span className="cam-corner tl"></span>
+              <span className="cam-corner tr"></span>
+              <span className="cam-corner bl"></span>
+              <span className="cam-corner br"></span>
               {imgSrc ? (
                 <img
                   src={imgSrc}
@@ -1141,19 +1252,39 @@ export default function Home() {
           <div className="c fade-in">
             <div className="c-head">
               <div className="c-title"><div className="c-dot" style={{ background: "var(--text3)" }}></div>Recent Sensor Records</div>
+              <div className="filter-tabs">
+                {(["ALL", "GOOD", "ALERT"] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    className={`filter-btn ${historyFilter === filter ? "active" : ""}`}
+                    onClick={() => setHistoryFilter(filter)}
+                    type="button"
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
             </div>
-            {data.slice(0, 5).map((item) => {
-              const sc = getStatusColor(item.status);
-              return (
-                <div className="h-row" key={item.id}>
-                  <div className="h-dot" style={{ background: sc }}></div>
-                  <span className="h-val">🌡 {item.temperature}°C</span>
-                  <span className="h-val">💧 {item.humidity}%</span>
-                  <span className="h-val">🌱 {item.soilMoisture}%</span>
-                  <div className="h-tag" style={{ background: `${sc}18`, color: sc }}>{item.status || "NORMAL"}</div>
-                </div>
-              );
-            })}
+            {data
+              .filter((item) => {
+                if (historyFilter === "ALL") return true;
+                if (historyFilter === "GOOD") return item.status === "GOOD" || item.status === "NORMAL" || !item.status;
+                if (historyFilter === "ALERT") return item.status === "WARNING" || item.status === "DANGER" || item.status === "CRITICAL";
+                return true;
+              })
+              .slice(0, 5)
+              .map((item) => {
+                const sc = getStatusColor(item.status);
+                return (
+                  <div className="h-row" key={item.id}>
+                    <div className="h-dot" style={{ background: sc }}></div>
+                    <span className="h-val">🌡 {item.temperature}°C</span>
+                    <span className="h-val">💧 {item.humidity}%</span>
+                    <span className="h-val">🌱 {item.soilMoisture}%</span>
+                    <div className="h-tag" style={{ background: `${sc}18`, color: sc }}>{item.status || "NORMAL"}</div>
+                  </div>
+                );
+              })}
           </div>
 
           <div className="c fade-in fade-in-1">
