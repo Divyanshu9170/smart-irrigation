@@ -5,27 +5,65 @@ import Link from "next/link";
 import { useAuth } from "../lib/auth-context";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, resetPassword } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  // Forgot / Reset password state
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState("");
+  const [resetSuccess, setResetSuccess] = useState("");
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError("Please fill in all fields");
+    if (!email.trim() || !password) {
+      setError("Please fill in both email and password");
       return;
     }
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email.trim(), password);
       window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
       setLoading(false);
+    }
+  };
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail.trim() || !newPassword || !confirmPassword) {
+      setResetError("Please fill in all fields");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setResetError("Password must be at least 6 characters");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setResetError("Passwords do not match");
+      return;
+    }
+    setResetError("");
+    setResetLoading(true);
+    try {
+      await resetPassword(resetEmail.trim(), newPassword);
+      setResetSuccess("Password reset successfully! Redirecting...");
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 1200);
+    } catch (err) {
+      setResetError(err instanceof Error ? err.message : "Password reset failed");
+      setResetLoading(false);
     }
   };
 
@@ -158,14 +196,22 @@ export default function Login() {
           padding: 10px 14px; border-radius: 10px;
           margin-bottom: 18px;
         }
+        .form-success {
+          background: rgba(34,197,94,0.1);
+          border: 1px solid rgba(34,197,94,0.3);
+          color: #86efac; font-size: 13px;
+          padding: 12px 14px; border-radius: 10px;
+          margin-bottom: 18px;
+        }
 
-        .forgot-link {
-          display: block; text-align: right;
+        .forgot-link-btn {
+          display: block; margin-left: auto;
           font-size: 12px; color: #38bdf8;
-          text-decoration: none; margin-top: 8px;
+          background: none; border: none; cursor: pointer;
+          margin-top: 8px; font-family: 'DM Sans', sans-serif;
           transition: color 0.2s;
         }
-        .forgot-link:hover { color: #7dd3fc; }
+        .forgot-link-btn:hover { color: #7dd3fc; text-decoration: underline; }
 
         .login-btn {
           width: 100%; padding: 14px;
@@ -191,12 +237,6 @@ export default function Login() {
           animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        .divider-row {
-          display: flex; align-items: center; gap: 12px;
-          margin: 24px 0; color: #1e293b; font-size: 12px;
-        }
-        .divider-line { flex: 1; height: 1px; background: rgba(255,255,255,0.04); }
 
         .register-box {
           text-align: center; margin-top: 28px;
@@ -227,6 +267,45 @@ export default function Login() {
           margin-bottom: 32px; transition: color 0.2s;
         }
         .back-home:hover { color: #64748b; }
+
+        /* MODAL STYLES */
+        .modal-backdrop {
+          position: fixed; inset: 0;
+          background: rgba(3, 7, 18, 0.85);
+          backdrop-filter: blur(12px);
+          display: flex; align-items: center; justify-content: center;
+          padding: 20px; z-index: 9999;
+          animation: fadeIn 0.2s ease-out;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .modal-card {
+          background: #0b1329;
+          border: 1px solid rgba(56, 189, 248, 0.25);
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 35px rgba(56, 189, 248, 0.12);
+          border-radius: 20px;
+          max-width: 440px; width: 100%;
+          padding: 32px; position: relative;
+          animation: slideUp 0.25s ease-out;
+        }
+        @keyframes slideUp {
+          from { transform: translateY(15px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-close-btn {
+          position: absolute; top: 20px; right: 20px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: #94a3b8; width: 32px; height: 32px;
+          border-radius: 8px; display: flex; align-items: center;
+          justify-content: center; font-size: 16px; cursor: pointer;
+          transition: all 0.2s;
+        }
+        .modal-close-btn:hover {
+          background: rgba(255, 255, 255, 0.15);
+          color: #f8fafc;
+        }
       `}</style>
 
       <div className="login-page">
@@ -284,6 +363,7 @@ export default function Login() {
                     placeholder="you@example.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    required
                   />
                 </div>
               </div>
@@ -297,16 +377,31 @@ export default function Login() {
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    required
                   />
                   <button
                     type="button"
                     className="input-icon"
                     onClick={() => setShowPassword(!showPassword)}
+                    title={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? "🙈" : "👁️"}
                   </button>
                 </div>
-                <a href="#" className="forgot-link">Forgot password?</a>
+                <button
+                  type="button"
+                  className="forgot-link-btn"
+                  onClick={() => {
+                    setResetEmail(email);
+                    setNewPassword("");
+                    setConfirmPassword("");
+                    setResetError("");
+                    setResetSuccess("");
+                    setShowResetModal(true);
+                  }}
+                >
+                  Forgot password?
+                </button>
               </div>
 
               <button
@@ -333,6 +428,97 @@ export default function Login() {
           </div>
         </div>
       </div>
+
+      {/* FORGOT PASSWORD MODAL */}
+      {showResetModal && (
+        <div className="modal-backdrop" onClick={() => setShowResetModal(false)}>
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="modal-close-btn"
+              onClick={() => setShowResetModal(false)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+
+            <div style={{ marginBottom: 24 }}>
+              <div className="login-tag">Account Recovery</div>
+              <h3 style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 700, color: "#f0f9ff", marginBottom: 6 }}>
+                Reset Your Password
+              </h3>
+              <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
+                Enter your registered farm account email and choose a new password.
+              </p>
+            </div>
+
+            {resetError && <div className="form-error">⚠️ {resetError}</div>}
+            {resetSuccess && <div className="form-success">✅ {resetSuccess}</div>}
+
+            <form onSubmit={handleReset}>
+              <div className="form-group">
+                <label className="form-label">Registered Email</label>
+                <div className="form-input-wrap">
+                  <input
+                    type="email"
+                    className="form-input"
+                    placeholder="you@example.com"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">New Password (min 6 characters)</label>
+                <div className="form-input-wrap">
+                  <input
+                    type={showResetPassword ? "text" : "password"}
+                    className="form-input has-icon"
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="input-icon"
+                    onClick={() => setShowResetPassword(!showResetPassword)}
+                  >
+                    {showResetPassword ? "🙈" : "👁️"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Confirm New Password</label>
+                <div className="form-input-wrap">
+                  <input
+                    type={showResetPassword ? "text" : "password"}
+                    className="form-input"
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                className="login-btn"
+                disabled={resetLoading || !!resetSuccess}
+              >
+                {resetLoading ? (
+                  <><div className="spinner"></div> Updating Password...</>
+                ) : (
+                  "Reset Password & Sign In →"
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

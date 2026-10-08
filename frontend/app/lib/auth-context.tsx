@@ -11,6 +11,7 @@ type AuthContextType = {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  resetPassword: (email: string, newPassword: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -39,10 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
+    const cleanEmail = email.trim().toLowerCase();
     const res = await fetch(`${API_BASE_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: cleanEmail, password }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -56,10 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const register = async (name: string, email: string, password: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = name.trim();
     const res = await fetch(`${API_BASE_URL}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, email, password }),
+      body: JSON.stringify({ name: cleanName, email: cleanEmail, password }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
@@ -72,6 +76,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(result.user);
   };
 
+  const resetPassword = async (email: string, newPassword: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const res = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: cleanEmail, newPassword }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.message || "Failed to reset password");
+    }
+    const result = await res.json();
+    if (result.accessToken && result.user) {
+      localStorage.setItem(TOKEN_KEY, result.accessToken);
+      localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+      setToken(result.accessToken);
+      setUser(result.user);
+    }
+  };
+
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
@@ -80,7 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ token, user, loading, login, register, resetPassword, logout }}>
       {children}
     </AuthContext.Provider>
   );

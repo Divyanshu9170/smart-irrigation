@@ -27,7 +27,8 @@ export class AuthService {
 
   // ✅ LOGIN — check email + password, return a token
   async login(data: { email: string; password: string }) {
-    const user = await this.usersService.findByEmail(data.email);
+    const cleanEmail = data.email ? data.email.trim().toLowerCase() : '';
+    const user = await this.usersService.findByEmail(cleanEmail);
 
     if (!user) {
       throw new UnauthorizedException('Invalid email or password');
@@ -40,6 +41,30 @@ export class AuthService {
     }
 
     return this.signToken(user.id, user.email, user.name);
+  }
+
+  // ✅ RESET PASSWORD — verifies user exists, hashes new password, updates DB, returns JWT token & user
+  async resetPassword(data: { email: string; newPassword: string }) {
+    if (!data.email || !data.newPassword) {
+      throw new UnauthorizedException('Email and new password are required');
+    }
+    const cleanEmail = data.email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(cleanEmail);
+    if (!user) {
+      throw new UnauthorizedException('No account found with this email');
+    }
+
+    if (data.newPassword.length < 6) {
+      throw new UnauthorizedException('Password must be at least 6 characters long');
+    }
+
+    const hashedPassword = await bcrypt.hash(data.newPassword, 10);
+    const updatedUser = await this.usersService.updatePassword(cleanEmail, hashedPassword);
+
+    return {
+      message: 'Password reset successfully',
+      ...this.signToken(updatedUser.id, updatedUser.email, updatedUser.name),
+    };
   }
 
   // 🔑 Build the JWT + a safe (no password) user object for the frontend
