@@ -19,7 +19,6 @@ type SensorData = {
   createdAt: string;
 };
 
-// 🤖 Feature 6 — shape returned by POST /ai/analyze
 type AiAnalysisResult = {
   disease: string;
   confidence: number;
@@ -36,7 +35,6 @@ type ImageHistory = {
   time: string;
 };
 
-// 🔌 Feature 5 — device shape returned by GET /devices, needed for pump control
 type DeviceType = {
   id: number;
   deviceId: string;
@@ -60,20 +58,21 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [isOnline, setIsOnline] = useState(false);
   const [camPulse, setCamPulse] = useState(false);
-  // 🔌 Feature 5 — this user's devices (for pump status) + loading flag
   const [devices, setDevices] = useState<DeviceType[]>([]);
   const [pumpLoading, setPumpLoading] = useState(false);
 
-  // 🔌 NEW — 6-relay manual control state
+  // 6-relay manual control state
   const [relayStatus, setRelayStatus] = useState<Record<string, string> | null>(null);
   const [relayHistory, setRelayHistory] = useState<{ id: number; action: string; createdAt: string }[]>([]);
   const [relayLoadingKey, setRelayLoadingKey] = useState<string | null>(null);
   const [relayError, setRelayError] = useState<string | null>(null);
   const [historyFilter, setHistoryFilter] = useState<"ALL" | "GOOD" | "ALERT">("ALL");
 
-  // 🤖 Feature 6 — local file upload AI analysis (separate from the
-  // existing camera-based analyzeLatestImage() flow below, which is
-  // left completely untouched)
+  // Interactive logs tab switcher (removes empty bottom holes)
+  const [activeLogTab, setActiveLogTab] = useState<"readings" | "relays" | "ai">("readings");
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Local file upload AI analysis
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [aiResult, setAiResult] = useState<AiAnalysisResult | null>(null);
@@ -81,25 +80,14 @@ export default function Home() {
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiUploadHistory, setAiUploadHistory] = useState<AiAnalysisResult[]>([]);
 
-  // 🔒 Feature 4: dashboard now requires a logged-in user. Wait for the
-  // AuthProvider's initial localStorage check before deciding to redirect,
-  // so a real logged-in user isn't bounced during the first render.
+  // Auth check
   useEffect(() => {
     if (!authLoading && !token) {
       router.push("/login");
     }
   }, [authLoading, token, router]);
 
-  // ✅ ALL EXISTING LOGIC PRESERVED
   const CAMERA_URL = "http://10.97.53.164";
-
-  // 📷 Live camera — ESP32-CAM only exposes /capture (no /stream).
-  // Sequential preload pattern: fetch the next frame into an off-DOM
-  // Image() first, and only swap imgSrc (and mark online/pulse) once
-  // that fetch has actually succeeded — so the visible <img> is never
-  // replaced with a half-loaded or broken request. On error, wait and
-  // retry. Each cycle schedules the next one itself (no setInterval),
-  // so a slow ESP32 response can never overlap with a new request.
   const cameraActiveRef = useRef(true);
   const cameraTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -133,37 +121,42 @@ export default function Home() {
     cameraActiveRef.current = true;
     requestNextImage();
     return () => {
-      // 🧹 Stop the recursive retry loop and clear any pending timer
       cameraActiveRef.current = false;
       if (cameraTimeoutRef.current) clearTimeout(cameraTimeoutRef.current);
     };
   }, []);
 
-  useEffect(() => {
-    if (!token) return; // 🔒 /sensor-readings now requires auth — wait for login
-    const loadData = async () => {
-      try {
-        setError(null);
-        const response = await apiFetch("/sensor-readings");
-        if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        const sensorData = await response.json();
-        if (Array.isArray(sensorData) && sensorData.length > 0) {
-          setData(sensorData);
-          setLatest(sensorData[0]);
-          setIsOnline(true);
-          setLastUpdated(new Date().toLocaleTimeString());
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        setIsOnline(false);
+  const loadData = async () => {
+    try {
+      setError(null);
+      const response = await apiFetch("/sensor-readings");
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const sensorData = await response.json();
+      if (Array.isArray(sensorData) && sensorData.length > 0) {
+        setData(sensorData);
+        setLatest(sensorData[0]);
+        setIsOnline(true);
+        setLastUpdated(new Date().toLocaleTimeString());
       }
-    };
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setIsOnline(false);
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    await loadData();
+    setTimeout(() => setRefreshing(false), 500);
+  };
+
+  useEffect(() => {
+    if (!token) return;
     loadData();
     const interval = setInterval(loadData, 5000);
     return () => clearInterval(interval);
   }, [token]);
 
-  // 🔌 Feature 5 — load this user's devices (needed to show/toggle pump status)
   useEffect(() => {
     if (!token) return;
     const loadDevices = async () => {
@@ -180,7 +173,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [token]);
 
-  // 🔌 Feature 5 — toggle the pump on the user's first device
   const togglePump = async () => {
     const device = devices[0];
     if (!device) {
@@ -205,7 +197,6 @@ export default function Home() {
     }
   };
 
-  // 🔌 NEW — fetch this device's 6 relay states on load + poll every 5s
   useEffect(() => {
     const deviceId = devices[0]?.id;
     if (!deviceId) return;
@@ -215,9 +206,9 @@ export default function Home() {
       try {
         const response = await apiFetch(`/devices/${deviceId}/relay`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const data = await response.json();
+        const d = await response.json();
         if (!cancelled) {
-          setRelayStatus(data);
+          setRelayStatus(d);
           setRelayError(null);
         }
       } catch (err) {
@@ -233,18 +224,14 @@ export default function Home() {
     };
   }, [devices]);
 
-  // 📜 NEW — relay history (item 9), reusing the existing
-  // GET /auto-actions/:deviceId endpoint. Same polling cadence as
-  // relay status, kept as a separate effect so a history-fetch failure
-  // never blocks the relay toggle UI itself.
   const loadRelayHistory = async () => {
     const deviceId = devices[0]?.id;
     if (!deviceId) return;
     try {
       const response = await apiFetch(`/auto-actions/${deviceId}`);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      if (Array.isArray(data)) setRelayHistory(data);
+      const d = await response.json();
+      if (Array.isArray(d)) setRelayHistory(d);
     } catch (err) {
       console.log("Could not load relay history:", err);
     }
@@ -258,9 +245,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [devices]);
 
-  // 🔌 NEW — toggle a single relay. Prevents double-clicks (button is
-  // disabled while loading), and restores the previous state + shows an
-  // error message if the backend call fails, instead of falsely showing ON.
   const toggleRelay = async (relayName: string) => {
     const deviceId = devices[0]?.id;
     if (!deviceId) return;
@@ -278,11 +262,9 @@ export default function Home() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const updated = await response.json();
       setRelayStatus(updated);
-      loadRelayHistory(); // ✅ NEW — reflect this action in history immediately
+      loadRelayHistory();
     } catch (err) {
       console.error(`Relay toggle failed for ${relayName}:`, err);
-      // ⚠️ Restore previous state — never leave the UI showing ON if the
-      // backend call actually failed.
       setRelayStatus((prev) => (prev ? { ...prev, [relayName]: previousStatus } : prev));
       setRelayError(`Could not update ${relayName}. Please try again.`);
     } finally {
@@ -290,7 +272,6 @@ export default function Home() {
     }
   };
 
-  // 🤖 Feature 6 — upload a locally-selected image to POST /ai/analyze
   const analyzeUploadedImage = async (file: File) => {
     setAiAnalyzing(true);
     setAiError(null);
@@ -302,8 +283,6 @@ export default function Home() {
       const authToken = getToken();
       const response = await fetch(`${API_BASE_URL}/ai/analyze`, {
         method: "POST",
-        // ⚠️ Do NOT set Content-Type here — the browser needs to set
-        // the multipart/form-data boundary itself.
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
         body: formData,
       });
@@ -313,9 +292,9 @@ export default function Home() {
         throw new Error(errBody.message || `HTTP ${response.status}`);
       }
 
-      const result: AiAnalysisResult = await response.json();
-      setAiResult(result);
-      setAiUploadHistory((prev) => [result, ...prev].slice(0, 5));
+      const res: AiAnalysisResult = await response.json();
+      setAiResult(res);
+      setAiUploadHistory((prev) => [res, ...prev].slice(0, 5));
     } catch (err) {
       setAiError(err instanceof Error ? err.message : "Analysis failed. Please try again.");
     } finally {
@@ -326,7 +305,7 @@ export default function Home() {
 
   const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = ""; // reset so selecting the same file again still triggers onChange
+    e.target.value = "";
     if (file) analyzeUploadedImage(file);
   };
 
@@ -387,24 +366,24 @@ export default function Home() {
   };
 
   const getStatusColor = (status?: string) => {
-    if (!status) return "#4ade80";
-    if (status === "GOOD" || status === "NORMAL") return "#4ade80";
+    if (!status) return "#34d399";
+    if (status === "GOOD" || status === "NORMAL") return "#34d399";
     if (status === "WARNING") return "#fbbf24";
     return "#f87171";
   };
 
   const getRecommendation = () => {
-    if (!latest) return "Loading sensor data...";
-    if (latest.soilMoisture < 30) return "Low soil moisture detected — Irrigation recommended";
-    if (latest.temperature > 35) return "High temperature alert — Activate cooling system";
-    return "All conditions optimal — No action needed";
+    if (!latest) return "Synchronizing farm sensors...";
+    if (latest.soilMoisture < 30) return "Low soil moisture detected — Drip line activation advised";
+    if (latest.temperature > 35) return "High temperature threshold — Greenhouse ventilation active";
+    return "Microclimate optimal — Automated nutrient regulation engaged";
   };
 
   const getRecommendationIcon = () => {
     if (!latest) return "⏳";
     if (latest.soilMoisture < 30) return "💧";
     if (latest.temperature > 35) return "🌡️";
-    return "✅";
+    return "⚡";
   };
 
   const parseDisease = (diseaseStr: string) => {
@@ -420,25 +399,17 @@ export default function Home() {
   const parsedDisease = latestDisease ? parseDisease(latestDisease) : null;
 
   const getSeverityColor = (severity?: string) => {
-    if (!severity || severity === "None") return "#4ade80";
+    if (!severity || severity === "None") return "#34d399";
     if (severity === "Mild") return "#a3e635";
     if (severity === "Moderate") return "#fbbf24";
     if (severity === "Severe") return "#f87171";
     return "#94a3b8";
   };
 
-  const getSeverityBg = (severity?: string) => {
-    if (!severity || severity === "None") return "rgba(74,222,128,0.08)";
-    if (severity === "Mild") return "rgba(163,230,53,0.08)";
-    if (severity === "Moderate") return "rgba(251,191,36,0.08)";
-    if (severity === "Severe") return "rgba(248,113,113,0.08)";
-    return "rgba(148,163,184,0.08)";
-  };
-
   const getValueStatus = (value: number, low: number, high: number) => {
     if (value < low) return { color: "#fbbf24", label: "LOW" };
     if (value > high) return { color: "#f87171", label: "HIGH" };
-    return { color: "#4ade80", label: "OK" };
+    return { color: "#34d399", label: "OK" };
   };
 
   const clamp = (v: number, min: number, max: number) =>
@@ -449,680 +420,663 @@ export default function Home() {
     { icon: "💧", label: "Humidity", value: latest.humidity, unit: "%", low: 40, high: 80 },
     { icon: "🧪", label: "pH Level", value: latest.ph, unit: "", low: 5, high: 8 },
     { icon: "🌱", label: "Soil Moisture", value: latest.soilMoisture, unit: "%", low: 30, high: 80 },
-    { icon: "🔬", label: "Nitrogen", value: latest.nitrogen, unit: "mg/kg", low: 20, high: 150 },
-    { icon: "⚗️", label: "Phosphorus", value: latest.phosphorus, unit: "mg/kg", low: 10, high: 100 },
-    { icon: "💎", label: "Potassium", value: latest.potassium, unit: "mg/kg", low: 20, high: 200 },
+    { icon: "🔬", label: "Nitrogen (N)", value: latest.nitrogen, unit: "mg/kg", low: 20, high: 150 },
+    { icon: "⚗️", label: "Phosphorus (P)", value: latest.phosphorus, unit: "mg/kg", low: 10, high: 100 },
+    { icon: "💎", label: "Potassium (K)", value: latest.potassium, unit: "mg/kg", low: 20, high: 200 },
   ] : [];
+
+  const pumpActive = devices[0]?.pumpStatus === "ON";
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
-          --bg: #05090f;
-          --bg2: #0a121d;
-          --bg3: #0e1826;
-          --surface: rgba(255,255,255,0.035);
-          --surface2: rgba(255,255,255,0.065);
-          --border: rgba(255,255,255,0.08);
-          --border2: rgba(255,255,255,0.14);
-          --green: #34d399;
-          --green-dim: rgba(52,211,153,0.12);
-          --teal: #2dd4bf;
-          --teal-dim: rgba(45,212,191,0.12);
-          --amber: #fbbf24;
-          --amber-dim: rgba(251,191,36,0.12);
-          --red: #f87171;
-          --red-dim: rgba(248,113,113,0.12);
-          --text: #f1f5f9;
-          --text2: #94a3b8;
-          --text3: #52637a;
-          --font: 'Outfit', sans-serif;
-          --mono: 'JetBrains Mono', monospace;
-          --radius: 18px;
+          --bg-deep: #06090e;
+          --bg-panel: rgba(13, 20, 32, 0.75);
+          --bg-card: rgba(18, 27, 44, 0.65);
+          --border: rgba(255, 255, 255, 0.08);
+          --border-bright: rgba(52, 211, 153, 0.35);
+          --emerald: #10b981;
+          --mint: #34d399;
+          --cyan: #06b6d4;
+          --amber: #f59e0b;
+          --rose: #f43f5e;
+          --text-main: #f8fafc;
+          --text-muted: #94a3b8;
+          --text-sub: #64748b;
+          --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          --font-mono: 'JetBrains Mono', monospace;
         }
 
-        body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
-
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: var(--bg); }
-        ::-webkit-scrollbar-thumb { background: var(--bg3); border-radius: 4px; }
-
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
-        @keyframes fadeUp { from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:translateY(0)} }
-        @keyframes floatSlow { 0%,100%{ transform: translate(0,0) } 50%{ transform: translate(14px,-18px) } }
-        @keyframes floatSlow2 { 0%,100%{ transform: translate(0,0) } 50%{ transform: translate(-18px,16px) } }
-        @keyframes glowPulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(52,211,153,0.35) } 50%{ box-shadow: 0 0 0 8px rgba(52,211,153,0) } }
-        @keyframes camFlash { 0%,100%{opacity:1} 50%{opacity:0.72} }
-
-        .fade-in { animation: fadeUp 0.55s ease both; }
-        .fade-in-1 { animation-delay: 0.05s; }
-        .fade-in-2 { animation-delay: 0.12s; }
-        .fade-in-3 { animation-delay: 0.19s; }
-
-        /* ── AMBIENT BACKGROUND ── */
-        .ambient {
-          position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none;
+        body {
+          background-color: var(--bg-deep);
+          color: var(--text-main);
+          font-family: var(--font-sans);
+          min-height: 100vh;
+          overflow-x: hidden;
         }
-        .ambient::before {
-          content: ''; position: absolute; inset: 0;
+
+        /* ── GLOWING ATMOSPHERIC BACKGROUND ── */
+        .ambient-field {
+          position: fixed; inset: 0; pointer-events: none; z-index: 0;
           background:
-            radial-gradient(ellipse 65% 50% at 18% -8%, rgba(52,211,153,0.10) 0%, transparent 60%),
-            radial-gradient(ellipse 55% 45% at 100% 10%, rgba(45,212,191,0.07) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 55% at 30% 100%, rgba(52,211,153,0.05) 0%, transparent 65%),
-            linear-gradient(180deg, var(--bg) 0%, #060c14 45%, var(--bg) 100%);
+            radial-gradient(circle 600px at 15% 10%, rgba(16, 185, 129, 0.09), transparent),
+            radial-gradient(circle 500px at 85% 20%, rgba(6, 182, 212, 0.08), transparent),
+            radial-gradient(circle 800px at 50% 85%, rgba(16, 185, 129, 0.05), transparent),
+            linear-gradient(180deg, #06090e 0%, #090e17 100%);
         }
-        .ambient-orb {
-          position: absolute; border-radius: 50%; filter: blur(70px); opacity: 0.16;
-        }
-        .ambient-orb.o1 { width: 420px; height: 420px; top: -120px; left: -80px; background: var(--green); animation: floatSlow 22s ease-in-out infinite; }
-        .ambient-orb.o2 { width: 360px; height: 360px; top: 20%; right: -100px; background: var(--teal); animation: floatSlow2 26s ease-in-out infinite; }
-        .ambient-orb.o3 { width: 300px; height: 300px; bottom: -100px; left: 30%; background: var(--green); opacity: 0.10; animation: floatSlow 30s ease-in-out infinite; }
-        .ambient-grain {
-          position: absolute; inset: 0; opacity: 0.4; mix-blend-mode: overlay;
-          background-image: radial-gradient(rgba(255,255,255,0.025) 1px, transparent 1px);
-          background-size: 3px 3px;
+        .ambient-grid {
+          position: absolute; inset: 0; opacity: 0.25;
+          background-image:
+            linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+            linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+          background-size: 32px 32px;
         }
 
-        .page { position: relative; z-index: 1; }
+        .layout-root { position: relative; z-index: 1; max-width: 1480px; margin: 0 auto; padding: 0 24px 40px; }
 
-        /* ── NAVBAR ── */
-        .nav {
-          position: sticky; top: 0; z-index: 50;
+        /* ── PRO NAVBAR ── */
+        .header-bar {
           display: flex; align-items: center; justify-content: space-between;
-          padding: 0 32px; height: 66px;
-          background: rgba(5,9,15,0.78);
-          backdrop-filter: blur(22px) saturate(160%);
-          border-bottom: 1px solid var(--border);
+          padding: 18px 0; margin-bottom: 20px; border-bottom: 1px solid var(--border);
         }
-        .nav-brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
-        .nav-icon {
-          width: 36px; height: 36px; border-radius: 11px;
-          background: linear-gradient(135deg, #34d399 0%, #059669 100%);
-          display: flex; align-items: center; justify-content: center;
-          font-size: 18px; box-shadow: 0 0 18px rgba(52,211,153,0.32);
-        }
-        .nav-name { font-weight: 700; font-size: 16.5px; color: #f0fdf9; letter-spacing: -0.3px; }
-        .nav-name span { color: var(--green); }
-        .nav-links { display: flex; gap: 3px; }
-        .nav-a {
-          position: relative;
-          text-decoration: none; color: var(--text2); font-size: 13.5px; font-weight: 500;
-          padding: 8px 14px; border-radius: 8px; transition: all 0.2s;
-        }
-        .nav-a:hover { color: var(--text); background: var(--surface2); }
-        .nav-a.on { color: var(--green); background: var(--green-dim); }
-        .nav-a.on::after {
-          content: ''; position: absolute; left: 14px; right: 14px; bottom: 2px; height: 2px;
-          background: var(--green); border-radius: 2px;
-        }
-        .nav-right { display: flex; align-items: center; gap: 12px; }
-        .nav-pill {
-          display: flex; align-items: center; gap: 7px;
-          padding: 6px 13px; border-radius: 100px;
-          background: var(--surface); border: 1px solid var(--border);
-          font-size: 12px; color: var(--text2); font-weight: 500;
-        }
-        .pulse { width: 6px; height: 6px; border-radius: 50%; animation: blink 2s infinite; }
-        .pulse.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
-        .pulse.off { background: var(--red); box-shadow: 0 0 6px var(--red); }
-        @media(max-width: 860px){ .nav-links{ display:none; } }
-
-        /* ── HERO / OVERVIEW ── */
-        .hero {
-          position: relative; overflow: hidden;
-          padding: 68px 32px 44px; text-align: center;
-        }
-        .hero-tag {
-          display: inline-flex; align-items: center; gap: 8px;
-          padding: 6px 15px; border-radius: 100px; margin-bottom: 24px;
-          background: var(--green-dim); border: 1px solid rgba(52,211,153,0.22);
-          font-size: 11.5px; font-weight: 600; color: var(--green);
-          letter-spacing: 0.7px; text-transform: uppercase;
-          backdrop-filter: blur(8px);
-        }
-        .hero-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: blink 1.5s infinite; }
-        .hero-h1 {
-          font-size: clamp(32px, 5vw, 56px); font-weight: 800;
-          line-height: 1.1; letter-spacing: -1.6px; margin-bottom: 14px;
-          background: linear-gradient(160deg, #f0fdf9 0%, #a7f3d0 42%, #34d399 78%, #0d9488 100%);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-        }
-        .hero-sub {
-          font-size: 15.5px; color: var(--text3); max-width: 560px;
-          margin: 0 auto 30px; line-height: 1.7; font-weight: 400;
-        }
-        .hero-ctas { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-bottom: 40px; }
-        .cta-main {
-          padding: 13px 28px; border-radius: 11px; border: none; cursor: pointer;
-          background: linear-gradient(135deg, #34d399 0%, #059669 100%);
-          color: #052014; font-size: 14px; font-weight: 700; font-family: var(--font);
-          box-shadow: 0 6px 24px rgba(52,211,153,0.3); transition: all 0.22s;
-        }
-        .cta-main:hover { transform: translateY(-2px); box-shadow: 0 10px 32px rgba(52,211,153,0.42); }
-        .cta-sec {
-          padding: 13px 28px; border-radius: 11px; cursor: pointer;
-          background: var(--surface); border: 1px solid var(--border2);
-          color: var(--text2); font-size: 14px; font-weight: 500; font-family: var(--font);
-          transition: all 0.22s; text-decoration: none; display: inline-flex; align-items: center;
-        }
-        .cta-sec:hover { background: var(--surface2); color: var(--text); border-color: var(--green); }
-
-        .hero-kpis {
-          display: inline-flex; gap: 0; background: var(--surface); border: 1px solid var(--border);
-          border-radius: 16px; backdrop-filter: blur(10px);
-        }
-        .kpi { padding: 18px 34px; text-align: center; border-left: 1px solid var(--border); }
-        .kpi:first-child { border-left: none; }
-        .kpi-val { font-size: 24px; font-weight: 800; color: var(--green); font-family: var(--mono); }
-        .kpi-lbl { font-size: 10.5px; color: var(--text3); margin-top: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; }
-        @media(max-width: 640px){ .hero-kpis{ flex-wrap: wrap; } .kpi{ padding: 14px 20px; } }
-
-        /* ── LAYOUT ── */
-        .wrap { padding: 24px 32px 52px; max-width: 1440px; margin: 0 auto; }
-
-        .sec-head { display: flex; align-items: center; gap: 12px; margin: 36px 0 16px; }
-        .sec-head-txt {
-          font-size: 11px; font-weight: 700; color: var(--text2);
-          text-transform: uppercase; letter-spacing: 1.4px; white-space: nowrap;
-          display: flex; align-items: center; gap: 8px;
-        }
-        .sec-head-txt::before { content: ''; width: 3px; height: 13px; border-radius: 2px; background: var(--green); display: inline-block; }
-        .sec-head-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--border2), transparent); }
-
-        /* ── SENSOR GRID ── */
-        .sensor-strip { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 14px; }
-        @media(max-width:1200px){ .sensor-strip{ grid-template-columns: repeat(4,minmax(0,1fr)); } }
-        @media(max-width:720px){ .sensor-strip{ grid-template-columns: repeat(2,minmax(0,1fr)); } }
-
-        .s-card {
-          background: linear-gradient(145deg, rgba(16,24,39,0.72) 0%, rgba(9,15,28,0.85) 100%);
-          border: 1px solid var(--border);
-          border-radius: 18px; padding: 18px 16px;
-          position: relative; overflow: hidden;
-          backdrop-filter: blur(14px);
-          transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-          box-shadow: 0 4px 20px -2px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06);
-        }
-        .s-card:hover {
-          border-color: var(--accent-color, var(--green));
-          transform: translateY(-5px);
-          box-shadow: 0 16px 36px -6px rgba(0,0,0,0.5), 0 0 24px -6px var(--accent-color, var(--green));
-        }
-        .s-card::before {
-          content: ''; position: absolute; inset: 0;
-          background: radial-gradient(circle at 10% 0%, var(--accent-color, var(--green)) 0%, transparent 60%);
-          opacity: 0.08; pointer-events: none;
-        }
-        .s-card::after {
-          content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
-          background: linear-gradient(90deg, var(--accent-color, var(--green)), transparent);
-          opacity: 0.85;
-        }
-        .s-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-        .s-icon {
-          font-size: 18px; width: 34px; height: 34px; border-radius: 10px;
-          background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center;
-          border: 1px solid rgba(255,255,255,0.08);
-          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-        .s-badge {
-          font-size: 9.5px; font-weight: 700; padding: 3px 9px; border-radius: 100px;
-          font-family: var(--mono); letter-spacing: 0.4px;
-          border: 1px solid currentColor;
-        }
-        .s-lbl { font-size: 10px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
-        .s-val { font-size: 23px; font-weight: 800; font-family: var(--mono); margin-bottom: 10px; letter-spacing: -0.5px; }
-        .s-range { display: flex; justify-content: space-between; font-size: 9px; color: var(--text3); font-family: var(--mono); margin-bottom: 6px; }
-        .s-bar { height: 5px; background: rgba(255,255,255,0.08); border-radius: 10px; overflow: hidden; position: relative; }
-        .s-fill { height: 100%; border-radius: 10px; transition: width 0.9s cubic-bezier(.2,.8,.2,1); position: relative; }
-        .s-fill::after {
-          content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px;
-          background: #fff; filter: blur(2px); opacity: 0.8;
-        }
-
-        /* ── MAIN GRID ── */
-        .mg { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(0,0.85fr); gap: 22px; align-items: start; }
-        @media(max-width:960px){ .mg{ grid-template-columns:minmax(0,1fr); } }
-
-        /* ── CARD ── */
-        .c {
-          background: linear-gradient(160deg, rgba(16,24,39,0.78) 0%, rgba(9,15,28,0.92) 140%);
-          border: 1px solid var(--border);
-          border-radius: var(--radius); padding: 24px;
-          backdrop-filter: blur(14px);
-          transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s;
-          box-shadow: 0 8px 32px 0 rgba(0,0,0,0.37), inset 0 1px 0 rgba(255,255,255,0.06);
-        }
-        .c:hover { border-color: var(--border2); }
-        .c-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 8px; }
-        .c-title { font-size: 11.5px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 1.2px; display: flex; align-items: center; gap: 9px; }
-        .c-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
-
-        /* ── FARM INTELLIGENCE ── */
-        .intel-status { font-size: 34px; font-weight: 800; font-family: var(--mono); letter-spacing: -0.6px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; }
-        .intel-sub { font-size: 11.5px; color: var(--text3); margin-bottom: 16px; font-weight: 500; }
-        .intel-rec {
-          display: flex; align-items: flex-start; gap: 12px;
-          padding: 16px 18px; border-radius: 14px;
-          background: rgba(255,255,255,0.035); border: 1px solid var(--border2);
-          font-size: 13.5px; color: var(--text2); line-height: 1.6;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-        }
-        .intel-rec-icon { font-size: 20px; flex-shrink: 0; }
-
-        /* ── MANUAL CONTROLS — CYBER SWITCH TILES ── */
-        .ctrl-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 11px; }
-        @media(max-width:540px){ .ctrl-row{ grid-template-columns: minmax(0,1fr); } }
-
-        .ctrl-tile {
-          display: flex; align-items: center; justify-content: space-between; gap: 12px;
-          padding: 14px 16px; border-radius: 14px; cursor: pointer; text-align: left;
-          border: 1px solid var(--border); background: rgba(255,255,255,0.03);
-          color: var(--text); font-family: var(--font);
-          transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-          box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-        }
-        .ctrl-tile:hover:not(:disabled) {
-          border-color: var(--border2);
-          background: rgba(255,255,255,0.06);
-          transform: translateY(-2px);
-          box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-        }
-        .ctrl-tile:active:not(:disabled) { transform: translateY(0); }
-        .ctrl-tile:disabled { opacity: 0.55; cursor: not-allowed; }
-
-        .ctrl-tile.is-on {
-          background: linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(5,150,105,0.1) 100%);
-          border-color: rgba(52,211,153,0.5);
-          box-shadow: 0 0 20px rgba(16,185,129,0.25), inset 0 1px 0 rgba(52,211,153,0.3);
-        }
-
-        .ctrl-icon-box {
+        .header-brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+        .brand-badge {
           width: 38px; height: 38px; border-radius: 10px;
+          background: linear-gradient(135deg, #10b981 0%, #047857 100%);
           display: flex; align-items: center; justify-content: center;
-          font-size: 19px; background: rgba(255,255,255,0.05);
-          border: 1px solid rgba(255,255,255,0.08); flex-shrink: 0;
-          transition: transform 0.2s;
+          font-size: 20px; box-shadow: 0 0 20px rgba(16,185,129,0.35);
         }
-        .ctrl-tile.is-on .ctrl-icon-box {
-          background: rgba(52,211,153,0.2);
-          border-color: rgba(52,211,153,0.4);
-          transform: scale(1.05);
-        }
+        .brand-title { font-weight: 800; font-size: 19px; color: #fff; letter-spacing: -0.4px; }
+        .brand-title span { color: var(--mint); }
+        .brand-sub { font-size: 11px; color: var(--text-sub); font-family: var(--font-mono); }
 
-        .switch-capsule {
-          padding: 5px 10px; border-radius: 100px;
-          font-family: var(--mono); font-size: 10.5px; font-weight: 700;
-          display: flex; align-items: center; gap: 6px;
-          border: 1px solid var(--border); background: rgba(0,0,0,0.4);
-          color: var(--text3); transition: all 0.22s;
+        .nav-items { display: flex; gap: 8px; align-items: center; }
+        .nav-link {
+          color: var(--text-muted); text-decoration: none; font-size: 13px; font-weight: 600;
+          padding: 7px 14px; border-radius: 8px; transition: all 0.2s;
         }
-        .ctrl-tile.is-on .switch-capsule {
-          background: rgba(16,185,129,0.25);
-          border-color: rgba(52,211,153,0.6);
-          color: #ecfdf5;
-          box-shadow: 0 0 10px rgba(52,211,153,0.3);
+        .nav-link:hover { color: #fff; background: rgba(255,255,255,0.05); }
+        .nav-link.active { color: var(--mint); background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.2); }
+        .nav-btn {
+          background: none; border: none; cursor: pointer; color: var(--text-muted); font-family: inherit; font-size: 13px; font-weight: 600;
+          padding: 7px 14px; border-radius: 8px; transition: all 0.2s;
         }
-        .switch-indicator {
-          width: 7px; height: 7px; border-radius: 50%;
-          background: var(--text3); transition: all 0.22s;
-        }
-        .ctrl-tile.is-on .switch-indicator {
-          background: var(--green);
-          box-shadow: 0 0 8px var(--green);
-          animation: blink 1.4s infinite;
-        }
+        .nav-btn:hover { color: var(--rose); background: rgba(244,63,94,0.08); }
 
-        /* ── CAMERA HUD ── */
-        .cam-wrap {
-          position: relative; border-radius: 16px; overflow: hidden; background: #000;
-          aspect-ratio: 16/9;
-          border: 1px solid var(--border2);
-          box-shadow: 0 12px 36px rgba(0,0,0,0.6);
+        /* ── COMMAND DECK / TOP STATS BAR (ELIMINATES EMPTY HERO VOID) ── */
+        .cmd-deck {
+          background: var(--bg-panel);
+          border: 1px solid var(--border);
+          border-radius: 18px; padding: 18px 24px;
+          backdrop-filter: blur(16px);
+          display: flex; align-items: center; justify-content: space-between;
+          flex-wrap: wrap; gap: 16px; margin-bottom: 22px;
+          box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
         }
-        .cam-corner {
-          position: absolute; width: 14px; height: 14px; border-color: rgba(45,212,191,0.6); border-style: solid; z-index: 5; pointer-events: none;
-        }
-        .cam-corner.tl { top: 10px; left: 10px; border-width: 2px 0 0 2px; }
-        .cam-corner.tr { top: 10px; right: 10px; border-width: 2px 2px 0 0; }
-        .cam-corner.bl { bottom: 10px; left: 10px; border-width: 0 0 2px 2px; }
-        .cam-corner.br { bottom: 10px; right: 10px; border-width: 0 2px 2px 0; }
-
-        .cam-img { width: 100%; height: 100%; object-fit: cover; display: block; transition: opacity 0.3s; }
-        .cam-connecting { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 13px; gap: 8px; }
-        .cam-badge {
-          position: absolute; top: 13px; left: 13px;
-          display: flex; align-items: center; gap: 7px;
-          background: rgba(0,0,0,0.72); backdrop-filter: blur(12px);
-          border: 1px solid rgba(248,113,113,0.4);
+        .cmd-left { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+        .system-pill {
+          display: flex; align-items: center; gap: 9px;
           padding: 6px 14px; border-radius: 100px;
-          font-size: 10px; color: #fca5a5; font-weight: 700; letter-spacing: 1px;
+          background: rgba(16,185,129,0.1); border: 1px solid rgba(52,211,153,0.3);
+          font-size: 12px; font-weight: 700; color: var(--mint); font-family: var(--font-mono);
         }
-        .cam-status-badge {
-          position: absolute; top: 13px; right: 13px;
+        .pulse-beacon {
+          width: 8px; height: 8px; border-radius: 50%; background: var(--mint);
+          box-shadow: 0 0 10px var(--mint);
+          animation: beaconPulse 1.8s infinite;
+        }
+        @keyframes beaconPulse {
+          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52,211,153,0.7); }
+          70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(52,211,153,0); }
+          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+        }
+        .meta-stat-group { display: flex; gap: 20px; align-items: center; }
+        .meta-item { display: flex; flex-direction: column; }
+        .meta-lbl { font-size: 10px; text-transform: uppercase; color: var(--text-sub); font-weight: 700; letter-spacing: 0.5px; }
+        .meta-val { font-size: 13.5px; font-weight: 700; color: var(--text-main); font-family: var(--font-mono); }
+
+        .cmd-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .action-chip {
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 8px 14px; border-radius: 10px; font-size: 12.5px; font-weight: 700;
+          cursor: pointer; transition: all 0.2s; border: 1px solid var(--border);
+          background: rgba(255,255,255,0.04); color: var(--text-main); font-family: var(--font-sans);
+        }
+        .action-chip:hover {
+          background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.18); transform: translateY(-1px);
+        }
+        .action-chip.primary {
+          background: linear-gradient(135deg, rgba(16,185,129,0.3) 0%, rgba(5,150,105,0.2) 100%);
+          border-color: rgba(52,211,153,0.4); color: #ecfdf5;
+        }
+        .action-chip.primary:hover {
+          background: linear-gradient(135deg, rgba(16,185,129,0.45) 0%, rgba(5,150,105,0.35) 100%);
+          box-shadow: 0 0 16px rgba(16,185,129,0.3);
+        }
+        .spin { animation: spin 0.7s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* ── SENSOR BENTO STRIP (7 GAUGES) ── */
+        .sensor-bento {
+          display: grid; grid-template-columns: repeat(7, minmax(0, 1fr));
+          gap: 12px; margin-bottom: 24px;
+        }
+        @media(max-width: 1240px){ .sensor-bento { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+        @media(max-width: 768px){ .sensor-bento { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+
+        .s-gauge-card {
+          background: var(--bg-card);
+          border: 1px solid var(--border);
+          border-radius: 14px; padding: 14px;
+          backdrop-filter: blur(12px);
+          position: relative; overflow: hidden;
+          transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .s-gauge-card:hover {
+          border-color: var(--accent-glow, var(--mint));
+          transform: translateY(-3px);
+          box-shadow: 0 12px 24px -6px rgba(0,0,0,0.5), 0 0 16px -4px var(--accent-glow, var(--mint));
+        }
+        .s-top-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .s-icon-pill {
+          width: 30px; height: 30px; border-radius: 8px;
+          background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center;
+          font-size: 15px; border: 1px solid rgba(255,255,255,0.06);
+        }
+        .s-status-tag {
+          font-size: 9px; font-weight: 800; font-family: var(--font-mono);
+          padding: 2px 7px; border-radius: 6px; letter-spacing: 0.4px;
+        }
+        .s-label-txt { font-size: 10px; color: var(--text-sub); font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
+        .s-val-display { font-size: 21px; font-weight: 800; font-family: var(--font-mono); letter-spacing: -0.5px; margin-bottom: 8px; display: flex; align-items: baseline; }
+        .s-unit-sub { font-size: 11px; font-weight: 600; color: var(--text-sub); margin-left: 3px; }
+        .s-range-meta { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-sub); font-family: var(--font-mono); margin-bottom: 5px; }
+        .s-progress-track { height: 4px; background: rgba(255,255,255,0.06); border-radius: 10px; overflow: hidden; }
+        .s-progress-fill { height: 100%; border-radius: 10px; transition: width 0.8s ease; }
+
+        /* ── BALANCED 2-COLUMN COCKPIT (ZERO EMPTY SPACE) ── */
+        .cockpit-grid {
+          display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1.25fr);
+          gap: 20px; align-items: start;
+        }
+        @media(max-width: 1060px){ .cockpit-grid { grid-template-columns: minmax(0, 1fr); } }
+
+        /* ── SECTION PANELS ── */
+        .bento-panel {
+          background: var(--bg-panel);
+          border: 1px solid var(--border);
+          border-radius: 18px; padding: 20px;
+          backdrop-filter: blur(16px);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+          margin-bottom: 20px;
+        }
+        .panel-header {
+          display: flex; align-items: center; justify-content: space-between;
+          margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+        }
+        .panel-title {
+          font-size: 12.5px; font-weight: 800; color: #fff; text-transform: uppercase;
+          letter-spacing: 1px; display: flex; align-items: center; gap: 9px;
+        }
+        .title-dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+
+        /* ── LIVE CAMERA HUD ── */
+        .cam-frame {
+          position: relative; border-radius: 14px; overflow: hidden; background: #000;
+          aspect-ratio: 16/9; border: 1px solid var(--border);
+          box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        .cam-corner-tag {
+          position: absolute; width: 14px; height: 14px; border-color: rgba(52,211,153,0.7);
+          border-style: solid; z-index: 5; pointer-events: none;
+        }
+        .cam-corner-tag.tl { top: 8px; left: 8px; border-width: 2px 0 0 2px; }
+        .cam-corner-tag.tr { top: 8px; right: 8px; border-width: 2px 2px 0 0; }
+        .cam-corner-tag.bl { bottom: 8px; left: 8px; border-width: 0 0 2px 2px; }
+        .cam-corner-tag.br { bottom: 8px; right: 8px; border-width: 0 2px 2px 0; }
+        .cam-feed { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .cam-wait { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-sub); font-size: 13px; gap: 8px; }
+        .cam-badge-live {
+          position: absolute; top: 12px; left: 12px;
           display: flex; align-items: center; gap: 7px;
-          background: rgba(0,0,0,0.72); backdrop-filter: blur(12px);
-          border: 1px solid var(--border2);
-          padding: 6px 13px; border-radius: 100px;
-          font-size: 10px; font-weight: 700; letter-spacing: 0.6px;
+          background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+          border: 1px solid rgba(244,63,94,0.4); padding: 5px 12px; border-radius: 100px;
+          font-size: 10px; color: #fca5a5; font-weight: 800; letter-spacing: 0.8px;
         }
-        .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #f87171; animation: blink 1.2s infinite; }
-        .cam-flash { animation: camFlash 0.5s ease; }
-        .cam-live-ring {
-          width: 8px; height: 8px; border-radius: 50%; background: var(--red); animation: glowPulse 1.8s infinite;
+        .cam-badge-right {
+          position: absolute; top: 12px; right: 12px;
+          display: flex; align-items: center; gap: 6px;
+          background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+          border: 1px solid var(--border); padding: 5px 11px; border-radius: 100px;
+          font-size: 10px; font-weight: 700; font-family: var(--font-mono);
         }
-        .cam-meta-grid { margin-top: 14px; display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }
-        .cam-meta {
-          background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
-          transition: border-color 0.2s, transform 0.2s;
+
+        .cam-metrics-grid {
+          display: grid; grid-template-columns: repeat(4, minmax(0,1fr));
+          gap: 8px; margin-top: 12px;
         }
-        .cam-meta:hover { border-color: var(--border2); transform: translateY(-1px); }
-        .cam-meta-lbl { font-size: 9.5px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 5px; }
-        .cam-meta-val { font-size: 13.5px; color: var(--text); font-family: var(--mono); font-weight: 600; }
-
-        /* ── IMAGE GRID ── */
-        .img-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 15px; }
-        .img-thumb { border-radius: 12px; overflow: hidden; aspect-ratio: 1; border: 1px solid var(--border); cursor: pointer; transition: all 0.24s; }
-        .img-thumb:hover { transform: scale(1.05); border-color: var(--green); box-shadow: 0 10px 24px rgba(0,0,0,0.4); }
-        .img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-        .img-skel { border-radius: 12px; aspect-ratio: 1; background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
-
-        /* ── ANALYZE BTN ── */
-        .analyze-btn {
-          padding: 10px 18px; border-radius: 12px; border: none; cursor: pointer;
-          font-size: 12.5px; font-weight: 700; font-family: var(--font);
-          display: flex; align-items: center; gap: 7px;
-          transition: all 0.22s;
-        }
-        .analyze-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(139,92,246,0.4); }
-        .analyze-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* ── AI SECTION ── */
-        .ai-banner { border-radius: 16px; padding: 20px 22px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-        .ai-name { font-size: 19px; font-weight: 800; letter-spacing: -0.3px; }
-        .ai-sev { padding: 5px 16px; border-radius: 100px; font-size: 11px; font-weight: 700; font-family: var(--mono); letter-spacing: 0.6px; }
-        .ai-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
-        @media(max-width:500px){ .ai-grid{ grid-template-columns:minmax(0,1fr); } }
-        .ai-c { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
-        .ai-c-lbl { font-size: 10px; color: var(--text3); font-weight: 700; text-transform: uppercase; letter-spacing: 1.1px; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
-        .ai-c-txt { font-size: 13.5px; color: var(--text2); line-height: 1.65; }
-        .ai-empty { text-align: center; padding: 48px 20px; color: var(--text3); }
-        .ai-empty-icon { font-size: 48px; margin-bottom: 14px; filter: grayscale(0.2); }
-
-        /* ── BOTTOM GRID ── */
-        .bg2 { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(0,1fr) minmax(0,0.8fr); gap: 22px; margin-top: 22px; }
-        @media(max-width:1180px){ .bg2{ grid-template-columns: minmax(0,1fr) minmax(0,1fr); } }
-        @media(max-width:760px){ .bg2{ grid-template-columns:minmax(0,1fr); } }
-
-        .h-row {
-          display: flex; align-items: center; gap: 12px;
-          padding: 12px 14px; border-radius: 12px;
+        .cam-metric-box {
           background: rgba(255,255,255,0.03); border: 1px solid var(--border);
-          margin-bottom: 8px; font-size: 12.5px; color: var(--text2);
-          transition: all 0.22s;
+          border-radius: 10px; padding: 8px 10px; text-align: center;
         }
-        .h-row:hover { border-color: var(--border2); transform: translateX(3px); background: rgba(255,255,255,0.05); }
-        .h-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 6px currentColor; }
-        .h-val { font-family: var(--mono); font-size: 12px; color: var(--text); }
-        .h-tag { margin-left: auto; font-size: 9.5px; font-weight: 700; padding: 3px 10px; border-radius: 100px; font-family: var(--mono); }
+        .cam-metric-k { font-size: 9px; text-transform: uppercase; color: var(--text-sub); font-weight: 700; margin-bottom: 2px; }
+        .cam-metric-v { font-size: 12px; font-weight: 700; color: #fff; font-family: var(--font-mono); }
 
-        .filter-tabs { display: flex; gap: 6px; }
-        .filter-btn {
-          font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 8px;
+        /* ── CAMERA ACTIONS & SNAPSHOT TRAY (FILLS EMPTY SPACE) ── */
+        .vision-action-bar {
+          display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap;
+        }
+        .btn-ai-scan {
+          flex: 1; padding: 11px 16px; border-radius: 12px; border: none; cursor: pointer;
+          background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+          color: #fff; font-size: 13px; font-weight: 700; font-family: var(--font-sans);
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          box-shadow: 0 4px 18px rgba(139,92,246,0.35); transition: all 0.2s;
+        }
+        .btn-ai-scan:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(139,92,246,0.45); }
+        .btn-ai-scan:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .btn-upload-leaf {
+          padding: 11px 16px; border-radius: 12px; cursor: pointer;
+          background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+          color: var(--text-main); font-size: 13px; font-weight: 700; font-family: var(--font-sans);
+          display: flex; align-items: center; gap: 8px; transition: all 0.2s;
+        }
+        .btn-upload-leaf:hover:not(:disabled) { background: rgba(255,255,255,0.09); border-color: rgba(255,255,255,0.18); }
+
+        .snapshot-tray { margin-top: 14px; }
+        .tray-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .tray-lbl { font-size: 10.5px; font-weight: 700; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.6px; }
+        .tray-grid { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: 8px; }
+        .tray-thumb {
+          aspect-ratio: 1; border-radius: 8px; overflow: hidden;
+          border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; background: rgba(0,0,0,0.3);
+        }
+        .tray-thumb:hover { border-color: var(--mint); transform: scale(1.06); }
+        .tray-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .tray-empty-skel {
+          aspect-ratio: 1; border-radius: 8px; background: rgba(255,255,255,0.03);
+          border: 1px dashed rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center;
+          font-size: 10px; color: var(--text-sub);
+        }
+
+        /* ── AI PLANT DOCTOR CARD (INTEGRATED UNDER CAMERA TO ELIMINATE VOID) ── */
+        .ai-doctor-card {
+          margin-top: 16px; border-radius: 14px; padding: 16px;
+          background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+        }
+        .ai-doc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+        .ai-doc-title { font-size: 14px; font-weight: 800; color: #fff; display: flex; align-items: center; gap: 8px; }
+        .ai-diag-banner {
+          border-radius: 12px; padding: 12px 14px; margin-bottom: 12px;
+          display: flex; align-items: center; justify-content: space-between; gap: 10px;
+        }
+        .ai-diag-name { font-size: 15px; font-weight: 800; }
+        .ai-diag-sev {
+          font-size: 10px; font-weight: 800; font-family: var(--font-mono);
+          padding: 3px 10px; border-radius: 100px; text-transform: uppercase;
+        }
+        .ai-doc-columns { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 10px; }
+        @media(max-width:540px){ .ai-doc-columns { grid-template-columns: minmax(0,1fr); } }
+        .ai-doc-box {
+          background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.05);
+          border-radius: 10px; padding: 11px 13px;
+        }
+        .ai-doc-k { font-size: 9.5px; color: var(--text-sub); font-weight: 800; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+        .ai-doc-v { font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
+
+        .ai-ready-guide {
+          display: flex; align-items: center; gap: 14px; padding: 12px 14px;
+          border-radius: 12px; background: rgba(139,92,246,0.06); border: 1px dashed rgba(139,92,246,0.25);
+        }
+        .ai-guide-icon { font-size: 26px; }
+        .ai-guide-h { font-size: 13px; font-weight: 700; color: #d8b4fe; margin-bottom: 2px; }
+        .ai-guide-p { font-size: 11.5px; color: var(--text-sub); line-height: 1.4; }
+
+        /* ── CYBER SWITCHBOARD (6 RELAYS) ── */
+        .switch-grid {
+          display: grid; grid-template-columns: repeat(2, minmax(0,1fr));
+          gap: 10px; margin-bottom: 16px;
+        }
+        @media(max-width:580px){ .switch-grid { grid-template-columns: minmax(0,1fr); } }
+
+        .switch-tile {
+          display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          padding: 13px 15px; border-radius: 13px; cursor: pointer; text-align: left;
           border: 1px solid var(--border); background: rgba(255,255,255,0.03);
-          color: var(--text3); cursor: pointer; transition: all 0.2s; font-family: var(--mono);
+          color: var(--text-main); font-family: var(--font-sans);
+          transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .filter-btn:hover { color: var(--text); border-color: var(--border2); }
-        .filter-btn.active {
-          background: var(--green-dim); border-color: var(--green); color: var(--green);
+        .switch-tile:hover:not(:disabled) {
+          border-color: rgba(255,255,255,0.18); background: rgba(255,255,255,0.06);
+          transform: translateY(-2px); box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+        .switch-tile.active {
+          background: linear-gradient(135deg, rgba(16,185,129,0.18) 0%, rgba(5,150,105,0.08) 100%);
+          border-color: rgba(52,211,153,0.5);
+          box-shadow: 0 0 18px rgba(16,185,129,0.22), inset 0 1px 0 rgba(52,211,153,0.25);
+        }
+        .switch-left { display: flex; align-items: center; gap: 10px; }
+        .switch-icon-box {
+          width: 36px; height: 36px; border-radius: 9px;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 17px; background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.07); flex-shrink: 0;
+        }
+        .switch-tile.active .switch-icon-box {
+          background: rgba(52,211,153,0.2); border-color: rgba(52,211,153,0.4);
+        }
+        .switch-title { font-size: 13px; font-weight: 700; color: #fff; }
+        .switch-sub { font-size: 10.5px; color: var(--text-sub); margin-top: 1px; }
+
+        .switch-pill {
+          padding: 4px 10px; border-radius: 100px;
+          font-family: var(--font-mono); font-size: 10px; font-weight: 800;
+          display: flex; align-items: center; gap: 5px;
+          border: 1px solid var(--border); background: rgba(0,0,0,0.4);
+          color: var(--text-sub); transition: all 0.2s;
+        }
+        .switch-tile.active .switch-pill {
+          background: rgba(16,185,129,0.25); border-color: rgba(52,211,153,0.6);
+          color: #ecfdf5; box-shadow: 0 0 8px rgba(52,211,153,0.3);
+        }
+        .switch-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-sub); }
+        .switch-tile.active .switch-dot {
+          background: var(--mint); box-shadow: 0 0 8px var(--mint);
+          animation: beaconPulse 1.4s infinite;
         }
 
-        .al-row {
-          display: flex; align-items: center; gap: 12px;
-          padding: 12px 14px; border-radius: 12px;
-          background: rgba(255,255,255,0.03); border: 1px solid var(--border);
-          margin-bottom: 8px; transition: all 0.22s;
-          border-left-width: 4px;
+        /* ── MASTER PUMP CONTROLLER BAR ── */
+        .master-pump-bar {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 13px 16px; border-radius: 13px;
+          background: rgba(6,182,212,0.06); border: 1px solid rgba(6,182,212,0.22);
+          margin-bottom: 16px;
         }
-        .al-row:hover { border-color: var(--border2); transform: translateX(3px); background: rgba(255,255,255,0.05); }
-        .al-name { font-size: 13px; color: var(--text); font-weight: 600; margin-bottom: 2px; }
-        .al-time { font-size: 11px; color: var(--text3); }
-        .al-badge { margin-left: auto; font-size: 9.5px; font-weight: 700; padding: 3px 10px; border-radius: 100px; font-family: var(--mono); white-space: nowrap; }
+        .pump-info { display: flex; align-items: center; gap: 10px; }
+        .pump-icon { font-size: 20px; }
+        .pump-label { font-size: 13px; font-weight: 700; color: #fff; }
+        .pump-desc { font-size: 11px; color: var(--text-sub); }
+        .pump-btn {
+          padding: 8px 16px; border-radius: 9px; border: none; cursor: pointer;
+          font-size: 11.5px; font-weight: 800; font-family: var(--font-mono);
+          letter-spacing: 0.5px; transition: all 0.2s;
+        }
+        .pump-btn.on {
+          background: var(--mint); color: #064e3b; box-shadow: 0 0 12px rgba(52,211,153,0.4);
+        }
+        .pump-btn.off {
+          background: rgba(255,255,255,0.08); color: var(--text-muted);
+        }
+        .pump-btn:hover:not(:disabled) { transform: translateY(-1px); }
 
-        .err { background: var(--red-dim); border: 1px solid rgba(248,113,113,0.22); color: #fca5a5; padding: 13px 17px; border-radius: 14px; margin-bottom: 18px; font-size: 13px; display: flex; align-items: center; gap: 9px; }
+        /* ── INTERACTIVE TABBED TELEMETRY HUB (ZERO DEAD SPACE) ── */
+        .telemetry-tabs-bar {
+          display: flex; align-items: center; justify-content: space-between;
+          border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 14px;
+          flex-wrap: wrap; gap: 10px;
+        }
+        .tab-switcher { display: flex; gap: 6px; }
+        .tab-btn {
+          font-size: 11.5px; font-weight: 700; font-family: var(--font-sans);
+          padding: 6px 12px; border-radius: 8px; cursor: pointer;
+          border: 1px solid transparent; background: transparent; color: var(--text-sub);
+          transition: all 0.2s;
+        }
+        .tab-btn:hover { color: #fff; background: rgba(255,255,255,0.04); }
+        .tab-btn.active {
+          color: var(--mint); background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.25);
+        }
 
-        .foot { text-align: center; padding: 34px 0 20px; font-size: 11.5px; color: var(--text3); border-top: 1px solid var(--border); margin-top: 18px; }
+        .filter-chip-group { display: flex; gap: 5px; }
+        .filter-chip {
+          font-size: 9.5px; font-weight: 700; font-family: var(--font-mono);
+          padding: 3px 9px; border-radius: 6px; cursor: pointer;
+          border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: var(--text-sub);
+          transition: all 0.2s;
+        }
+        .filter-chip:hover { color: #fff; }
+        .filter-chip.active {
+          background: rgba(52,211,153,0.15); border-color: var(--mint); color: var(--mint);
+        }
+
+        .telemetry-list { display: flex; flex-direction: column; gap: 7px; max-height: 270px; overflow-y: auto; padding-right: 4px; }
+        .telemetry-row {
+          display: flex; align-items: center; justify-content: space-between; gap: 10px;
+          padding: 10px 13px; border-radius: 10px;
+          background: rgba(255,255,255,0.025); border: 1px solid var(--border);
+          font-size: 12px; transition: all 0.2s;
+        }
+        .telemetry-row:hover {
+          border-color: rgba(255,255,255,0.14); background: rgba(255,255,255,0.045); transform: translateX(2px);
+        }
+        .tele-left { display: flex; align-items: center; gap: 10px; }
+        .tele-dot { width: 7px; height: 7px; border-radius: 50%; box-shadow: 0 0 6px currentColor; flex-shrink: 0; }
+        .tele-vals { display: flex; gap: 12px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-main); }
+        .tele-tag {
+          font-size: 9px; font-weight: 800; font-family: var(--font-mono);
+          padding: 2px 8px; border-radius: 100px;
+        }
+
+        /* ── FOOTER ── */
+        .cockpit-footer {
+          margin-top: 30px; text-align: center; font-size: 11.5px; color: var(--text-sub);
+          padding-top: 20px; border-top: 1px solid var(--border);
+          display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+        }
+
+        /* ── AI MODAL ── */
+        .modal-overlay {
+          position: fixed; inset: 0; background: rgba(0,0,0,0.8);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 200; padding: 20px; backdrop-filter: blur(6px);
+        }
+        .modal-box {
+          background: #0f172a; border: 1px solid var(--border);
+          border-radius: 18px; padding: 24px; maxWidth: 460px; width: 100%;
+          box-shadow: 0 24px 60px rgba(0,0,0,0.7);
+        }
       `}</style>
 
-      <div className="ambient" aria-hidden="true">
-        <div className="ambient-orb o1"></div>
-        <div className="ambient-orb o2"></div>
-        <div className="ambient-orb o3"></div>
-        <div className="ambient-grain"></div>
+      {/* Atmospheric dynamic glow */}
+      <div className="ambient-field" aria-hidden="true">
+        <div className="ambient-grid"></div>
       </div>
 
-      <div className="page">
-      {/* ── NAVBAR ── */}
-      <nav className="nav">
-        <div className="nav-brand">
-          <div className="nav-icon">🌾</div>
-          <span className="nav-name">Agro<span>Sense</span></span>
-        </div>
-        <div className="nav-links">
-          <Link href="/" className="nav-a on">Dashboard</Link>
-          <Link href="/about" className="nav-a">About</Link>
-          <Link href="/crop" className="nav-a">Crops</Link>
-          <Link href="/contact" className="nav-a">Contact</Link>
-          {user ? (
+      <div className="layout-root">
+        {/* ── NAVBAR ── */}
+        <header className="header-bar">
+          <Link href="/" className="header-brand">
+            <div className="brand-badge">🌾</div>
+            <div>
+              <div className="brand-title">Agro<span>Sense</span> Pro</div>
+              <div className="brand-sub">Smart Greenhouse Telemetry</div>
+            </div>
+          </Link>
+          <nav className="nav-items">
+            <Link href="/" className="nav-link active">Dashboard</Link>
+            <Link href="/crop" className="nav-link">Crops</Link>
+            <Link href="/about" className="nav-link">About</Link>
+            <Link href="/contact" className="nav-link">Contact</Link>
+            {user ? (
+              <button className="nav-btn" onClick={() => { logout(); router.push("/login"); }}>
+                Logout ({user.name})
+              </button>
+            ) : (
+              <Link href="/login" className="nav-link">Login</Link>
+            )}
+          </nav>
+        </header>
+
+        {/* ── COMMAND DECK (HIGH-DENSITY HEADER, REPLACES BLOATED HERO) ── */}
+        <div className="cmd-deck">
+          <div className="cmd-left">
+            <div className="system-pill">
+              <span className="pulse-beacon"></span>
+              {isOnline ? "ESP32-0001 ACTIVE" : "ESP32 STANDBY"}
+            </div>
+            <div className="meta-stat-group">
+              <div className="meta-item">
+                <span className="meta-lbl">Greenhouse Zone</span>
+                <span className="meta-val">Sector A-1</span>
+              </div>
+              <div className="meta-item">
+                <span className="meta-lbl">Last Synced</span>
+                <span className="meta-val">{lastUpdated || "Live 5s Polling"}</span>
+              </div>
+              <div className="meta-item">
+                <span className="meta-lbl">System Risk</span>
+                <span className="meta-val" style={{ color: getStatusColor(latest?.status) }}>
+                  {latest?.status || "OPTIMAL"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="cmd-actions">
             <button
-              className="nav-a"
-              style={{ background: "none", border: "none", cursor: "pointer", font: "inherit" }}
-              onClick={() => { logout(); router.push("/login"); }}
+              className="action-chip primary"
+              onClick={handleManualRefresh}
+              disabled={refreshing}
             >
-              Logout ({user.name})
+              <span className={refreshing ? "spin" : ""}>🔄</span>
+              {refreshing ? "Syncing..." : "Sync Telemetry"}
             </button>
-          ) : (
-            <Link href="/login" className="nav-a">Login</Link>
-          )}
-        </div>
-        <div className="nav-right">
-          <div className="nav-pill">
-            <div className={`pulse ${isOnline ? "on" : "off"}`}></div>
-            {isOnline ? `Live · ${lastUpdated}` : "Offline"}
+
+            <button
+              className={`action-chip ${pumpActive ? "primary" : ""}`}
+              onClick={togglePump}
+              disabled={pumpLoading || !devices[0]}
+            >
+              <span>💧</span>
+              {pumpLoading ? "Updating..." : `Master Pump: ${pumpActive ? "ON" : "OFF"}`}
+            </button>
+
+            <Link href="/crop" className="action-chip">
+              <span>🌱</span> 100 Crop Library →
+            </Link>
           </div>
         </div>
-      </nav>
 
-      {/* ── HERO / OVERVIEW ── */}
-      <div className="hero fade-in">
-        <div className="hero-tag"><span className="hero-dot"></span>IoT · AI · Precision Agriculture</div>
-        <h1 className="hero-h1">Smart Farm Overview</h1>
-        <p className="hero-sub">
-          Real-time greenhouse monitoring with AI-powered plant disease detection,
-          automated sensor analysis, and intelligent irrigation management — all in one control center.
-        </p>
-        <div className="hero-ctas">
-          <button className="cta-main" onClick={() => document.getElementById("dash")?.scrollIntoView({ behavior: "smooth" })}>
-            Open Dashboard ↓
-          </button>
-          <Link href="/crop" className="cta-sec">Browse 100 Crops →</Link>
-        </div>
-        <div className="hero-kpis">
-          {[
-            { val: "7", lbl: "Live Sensors" },
-            { val: "AI", lbl: "Gemini Vision" },
-            { val: "5s", lbl: "Refresh Rate" },
-            { val: "100", lbl: "Crop Database" },
-          ].map((k) => (
-            <div className="kpi" key={k.lbl}>
-              <div className="kpi-val">{k.val}</div>
-              <div className="kpi-lbl">{k.lbl}</div>
-            </div>
-          ))}
-        </div>
-      </div>
+        {error && (
+          <div style={{ background: "rgba(244,63,94,0.12)", border: "1px solid rgba(244,63,94,0.3)", color: "#fca5a5", padding: "12px 18px", borderRadius: 12, marginBottom: 18, fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+            <span>⚠️</span> {error}
+          </div>
+        )}
 
-      {/* ── DASHBOARD ── */}
-      <div className="wrap" id="dash">
-
-        {error && <div className="err fade-in">⚠️ {error}</div>}
-
-        {/* SENSOR OVERVIEW */}
-        <div className="sec-head">
-          <span className="sec-head-txt">Live Sensor Readings</span>
-          <div className="sec-head-line"></div>
-        </div>
-
-        <div className="sensor-strip">
+        {/* ── SENSOR BENTO STRIP (7 GAUGES IN COMPACT ROW) ── */}
+        <div className="sensor-bento">
           {!latest
             ? [...Array(7)].map((_, i) => (
-              <div key={i} style={{ height: 118, borderRadius: 16, background: "var(--bg2)", border: "1px solid var(--border)", backgroundImage: "linear-gradient(90deg,var(--surface) 25%,var(--surface2) 50%,var(--surface) 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s infinite" }}></div>
+              <div key={i} style={{ height: 116, borderRadius: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}></div>
             ))
-            : sensors.map((s, idx) => {
+            : sensors.map((s) => {
               const st = getValueStatus(s.value, s.low, s.high);
               const pct = clamp(s.value, s.low, s.high);
               return (
                 <div
-                  className="s-card fade-in"
+                  className="s-gauge-card"
                   key={s.label}
-                  style={{ "--accent-color": st.color, animationDelay: `${idx * 0.05}s` } as React.CSSProperties}
+                  style={{ "--accent-glow": st.color } as React.CSSProperties}
                 >
-                  <div className="s-top">
-                    <span className="s-icon">{s.icon}</span>
-                    <span className="s-badge" style={{ background: `${st.color}18`, color: st.color }}>{st.label}</span>
+                  <div className="s-top-row">
+                    <div className="s-icon-pill">{s.icon}</div>
+                    <span className="s-status-tag" style={{ background: `${st.color}18`, color: st.color, border: `1px solid ${st.color}35` }}>
+                      {st.label}
+                    </span>
                   </div>
-                  <div className="s-lbl">{s.label}</div>
-                  <div className="s-val" style={{ color: st.color }}>{s.value}<span style={{ fontSize: 11, fontWeight: 500, color: "var(--text3)", marginLeft: 3 }}>{s.unit}</span></div>
-                  <div className="s-range">
-                    <span>Min {s.low}{s.unit}</span>
-                    <span>Max {s.high}{s.unit}</span>
+                  <div className="s-label-txt">{s.label}</div>
+                  <div className="s-val-display" style={{ color: st.color }}>
+                    {s.value}
+                    <span className="s-unit-sub">{s.unit}</span>
                   </div>
-                  <div className="s-bar"><div className="s-fill" style={{ width: `${pct}%`, background: st.color }}></div></div>
+                  <div className="s-range-meta">
+                    <span>{s.low}{s.unit}</span>
+                    <span>{s.high}{s.unit}</span>
+                  </div>
+                  <div className="s-progress-track">
+                    <div className="s-progress-fill" style={{ width: `${pct}%`, background: st.color }}></div>
+                  </div>
                 </div>
               );
             })
           }
         </div>
 
-        {/* FIELD MONITORING */}
-        <div className="sec-head">
-          <span className="sec-head-txt">Field Monitoring</span>
-          <div className="sec-head-line"></div>
-        </div>
+        {/* ── BALANCED MAIN COCKPIT (ZERO DEAD SPACE) ── */}
+        <div className="cockpit-grid">
 
-        <div className="mg">
-          {/* LEFT COL */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* ══ LEFT HUB: VISION & AI DIAGNOSTICS (SEAMLESSLY STACKED) ══ */}
+          <div>
+            <div className="bento-panel">
+              <div className="panel-header">
+                <div className="panel-title">
+                  <span className="title-dot" style={{ background: "var(--rose)" }}></span>
+                  Live Field Camera · Zone A-1
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10.5, color: "var(--rose)", fontFamily: "var(--font-mono)", fontWeight: 800 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--rose)", animation: "beaconPulse 1.5s infinite" }}></span>
+                  FEED ACTIVE
+                </div>
+              </div>
 
-            {/* FARM INTELLIGENCE */}
-            <div className="c fade-in fade-in-1">
-              <div className="c-head">
-                <div className="c-title"><div className="c-dot" style={{ background: "var(--green)" }}></div>Farm Intelligence</div>
-                <span style={{ fontSize: 10, color: "var(--text3)", fontFamily: "var(--mono)" }}>AUTO</span>
+              {/* Camera Frame */}
+              <div className="cam-frame">
+                <span className="cam-corner-tag tl"></span>
+                <span className="cam-corner-tag tr"></span>
+                <span className="cam-corner-tag bl"></span>
+                <span className="cam-corner-tag br"></span>
+                {imgSrc ? (
+                  <img
+                    src={imgSrc}
+                    alt="Live camera feed"
+                    className={`cam-feed ${camPulse ? "pulse" : ""}`}
+                  />
+                ) : (
+                  <div className="cam-wait">Connecting to camera feed…</div>
+                )}
+                <div className="cam-badge-live">● LIVE HUD</div>
+                <div className="cam-badge-right" style={{ color: isOnline ? "var(--mint)" : "var(--rose)" }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: isOnline ? "var(--mint)" : "var(--rose)" }}></span>
+                  {isOnline ? "1080p · ONLINE" : "OFFLINE"}
+                </div>
               </div>
-              {latest ? (
-                <>
-                  <div className="intel-status" style={{ color: getStatusColor(latest.status) }}>{latest.status || "NORMAL"}</div>
-                  <div className="intel-sub">Current system risk level</div>
-                  <div className="intel-rec">
-                    <span className="intel-rec-icon">{getRecommendationIcon()}</span>
-                    <span>{getRecommendation()}</span>
-                  </div>
-                </>
-              ) : (
-                <div style={{ height: 84, borderRadius: 12, background: "var(--surface)", animation: "shimmer 1.4s infinite", backgroundImage: "linear-gradient(90deg,var(--surface) 25%,var(--surface2) 50%,var(--surface) 75%)", backgroundSize: "200% 100%" }}></div>
-              )}
-            </div>
 
-            {/* MANUAL CONTROLS — 6 relays */}
-            <div className="c fade-in fade-in-2">
-              <div className="c-head">
-                <div className="c-title"><div className="c-dot" style={{ background: "var(--amber)" }}></div>Manual Controls</div>
+              {/* Camera Telemetry Bar */}
+              <div className="cam-metrics-grid">
+                <div className="cam-metric-box">
+                  <div className="cam-metric-k">Camera Node</div>
+                  <div className="cam-metric-v">ESP32-CAM</div>
+                </div>
+                <div className="cam-metric-box">
+                  <div className="cam-metric-k">Stream Cadence</div>
+                  <div className="cam-metric-v">1s Refresh</div>
+                </div>
+                <div className="cam-metric-box">
+                  <div className="cam-metric-k">Lens Focus</div>
+                  <div className="cam-metric-v">Crop Canopy</div>
+                </div>
+                <div className="cam-metric-box">
+                  <div className="cam-metric-k">Vision Engine</div>
+                  <div className="cam-metric-v">Gemini 1.5</div>
+                </div>
               </div>
-              {relayError && (
-                <div style={{ fontSize: 11.5, color: "var(--red)", marginBottom: 10 }}>⚠️ {relayError}</div>
-              )}
-              <div className="ctrl-row">
-                {[
-                  { key: "nitrogen", icon: "🧪", label: "N Water Supply", sub: "Nitrogen injector" },
-                  { key: "phosphorus", icon: "⚗️", label: "P Water Supply", sub: "Phosphorus feed" },
-                  { key: "potassium", icon: "💎", label: "K Water Supply", sub: "Potassium dosage" },
-                  { key: "water", icon: "🚿", label: "Main Water Supply", sub: "Primary drip line" },
-                  { key: "fan", icon: "🌀", label: "Exhaust Fan", sub: "Air circulation" },
-                  { key: "bulb", icon: "💡", label: "Growth Bulb", sub: "Photosynthesis lighting" },
-                ].map((r) => {
-                  const isOn = relayStatus?.[r.key] === "ON";
-                  const isLoading = relayLoadingKey === r.key;
-                  return (
-                    <button
-                      key={r.key}
-                      className={`ctrl-tile ${isOn ? "is-on" : ""}`}
-                      onClick={() => toggleRelay(r.key)}
-                      disabled={isLoading || !devices[0]}
-                      type="button"
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                        <div className="ctrl-icon-box">{r.icon}</div>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{r.label}</div>
-                          <div style={{ fontSize: 10.5, color: "var(--text3)", marginTop: 2 }}>{r.sub}</div>
-                        </div>
-                      </div>
-                      <div className="switch-capsule">
-                        <span className="switch-indicator"></span>
-                        {isLoading ? "SYNC..." : isOn ? "ACTIVE" : "STANDBY"}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
-            {/* DEVICE STATUS — compact summary of the 3 primary outputs */}
-            <div className="c fade-in fade-in-2">
-              <div className="c-head">
-                <div className="c-title"><div className="c-dot" style={{ background: "var(--teal)" }}></div>Device Status</div>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {[
-                  { key: "water", icon: "💧", label: "Water Pump" },
-                  { key: "fan", icon: "🌬", label: "Fan" },
-                  { key: "bulb", icon: "💡", label: "Bulb" },
-                ].map((d) => {
-                  const isOn = relayStatus?.[d.key] === "ON";
-                  return (
-                    <div key={d.key} className="h-row" style={{ justifyContent: "space-between" }}>
-                      <span>{d.icon} {d.label}</span>
-                      <span style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700, color: isOn ? "var(--green)" : "var(--text3)" }}>
-                        {isOn ? "🟢 ON" : "⚪ OFF"}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* CAPTURED IMAGES */}
-            <div className="c fade-in fade-in-3">
-              <div className="c-head">
-                <div className="c-title"><div className="c-dot" style={{ background: "#a78bfa" }}></div>Captured Images</div>
+              {/* Action Buttons: Analyze Feed & Upload Photo */}
+              <div className="vision-action-bar">
                 <button
-                  className="analyze-btn"
+                  className="btn-ai-scan"
                   onClick={analyzeLatestImage}
                   disabled={analyzing || images.length === 0}
-                  style={{
-                    background: analyzing ? "var(--surface)" : "linear-gradient(135deg,#8b5cf6,#7c3aed)",
-                    color: analyzing ? "var(--text3)" : "#fff",
-                    boxShadow: analyzing ? "none" : "0 4px 16px rgba(139,92,246,0.35)",
-                  }}
                 >
-                  {analyzing ? "⏳ Analyzing..." : "🤖 Analyze with AI"}
+                  {analyzing ? "⏳ Diagnosing with Gemini..." : "🤖 Analyze Camera Feed"}
                 </button>
+
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -1131,269 +1085,396 @@ export default function Home() {
                   style={{ display: "none" }}
                 />
                 <button
-                  className="analyze-btn"
+                  className="btn-upload-leaf"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={aiAnalyzing}
-                  style={{
-                    background: aiAnalyzing ? "var(--surface)" : "var(--surface2)",
-                    color: aiAnalyzing ? "var(--text3)" : "var(--text2)",
-                    border: "1px solid var(--border)",
-                    marginLeft: 8,
-                  }}
                 >
-                  {aiAnalyzing ? "⏳ Uploading..." : "📤 Upload from Device"}
+                  {aiAnalyzing ? "⏳ Uploading..." : "📤 Upload Leaf Photo"}
                 </button>
               </div>
-              <div className="img-grid">
-                {images.length === 0
-                  ? [...Array(6)].map((_, i) => <div key={i} className="img-skel"></div>)
-                  : images.slice(0, 6).map((img, i) => (
-                    <div className="img-thumb" key={i}>
-                      <img src={img.url} alt={`Capture ${i + 1}`} />
-                    </div>
-                  ))
-                }
-              </div>
-            </div>
-          </div>
 
-          {/* RIGHT COL — CAMERA */}
-          <div className="c fade-in fade-in-2" style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            <div className="c-head">
-              <div className="c-title"><div className="c-dot" style={{ background: "var(--red)" }}></div>Live Farm Camera</div>
-              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "var(--red)", fontFamily: "var(--mono)", fontWeight: 700 }}>
-                <span className="cam-live-ring"></span>LIVE
-              </span>
-            </div>
-            <div className="cam-wrap">
-              <span className="cam-corner tl"></span>
-              <span className="cam-corner tr"></span>
-              <span className="cam-corner bl"></span>
-              <span className="cam-corner br"></span>
-              {imgSrc ? (
-                <img
-                  src={imgSrc}
-                  alt="Live camera"
-                  className={`cam-img ${camPulse ? "cam-flash" : ""}`}
-                />
-              ) : (
-                <div className="cam-connecting">Connecting to camera…</div>
-              )}
-              <div className="cam-badge"><span className="live-dot"></span>LIVE MONITORING</div>
-              <div className="cam-status-badge" style={{ color: isOnline ? "var(--green)" : "var(--red)" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: isOnline ? "var(--green)" : "var(--red)" }}></span>
-                {isOnline ? "ONLINE" : "OFFLINE"}
-              </div>
-            </div>
-            <div className="cam-meta-grid">
-              {[
-                { label: "Field Zone", value: "Zone A-1" },
-                { label: "Capture Rate", value: "~1s interval" },
-                { label: "Resolution", value: "HD Feed" },
-                { label: "AI Status", value: latestDisease ? "Analyzed" : "Pending" },
-              ].map((m) => (
-                <div className="cam-meta" key={m.label}>
-                  <div className="cam-meta-lbl">{m.label}</div>
-                  <div className="cam-meta-val">{m.value}</div>
+              {/* Captured Snapshots Strip */}
+              <div className="snapshot-tray">
+                <div className="tray-head">
+                  <span className="tray-lbl">Recent Optical Frames ({images.length})</span>
+                  <span style={{ fontSize: 10, color: "var(--text-sub)", fontFamily: "var(--font-mono)" }}>Auto Stored</span>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
+                <div className="tray-grid">
+                  {images.length === 0
+                    ? [...Array(6)].map((_, i) => <div key={i} className="tray-empty-skel">Frame {i+1}</div>)
+                    : images.slice(0, 6).map((img, i) => (
+                      <div className="tray-thumb" key={i} title={`Frame ${i+1}`}>
+                        <img src={img.url} alt={`Snapshot ${i+1}`} />
+                      </div>
+                    ))
+                  }
+                </div>
+              </div>
 
-        {/* AI DISEASE SECTION */}
-        <div className="sec-head">
-          <span className="sec-head-txt">AI Plant Analysis · Gemini Vision</span>
-          <div className="sec-head-line"></div>
-        </div>
-
-        <div className="c fade-in" style={{ marginBottom: 0 }}>
-          {parsedDisease ? (
-            <>
-              <div
-                className="ai-banner"
-                style={{ background: getSeverityBg(parsedDisease.Severity), border: `1px solid ${getSeverityColor(parsedDisease.Severity)}28` }}
-              >
-                <div>
-                  <div style={{ fontSize: 10, color: "var(--text3)", marginBottom: 5, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 700 }}>Diagnosis Result</div>
-                  <div className="ai-name" style={{ color: getSeverityColor(parsedDisease.Severity) }}>
-                    {parsedDisease.Severity === "None" ? "✅ Plant is Healthy" : `⚠️ ${parsedDisease.Disease}`}
+              {/* AI Diagnosis Result or Intelligent Ready State (Fills space meaningfully) */}
+              <div className="ai-doctor-card">
+                <div className="ai-doc-header">
+                  <div className="ai-doc-title">
+                    <span>🩺</span> AI Plant Pathologist · Gemini Vision
                   </div>
-                </div>
-                <span
-                  className="ai-sev"
-                  style={{ background: `${getSeverityColor(parsedDisease.Severity)}18`, color: getSeverityColor(parsedDisease.Severity), border: `1px solid ${getSeverityColor(parsedDisease.Severity)}40` }}
-                >
-                  {parsedDisease.Severity || "NONE"}
-                </span>
-              </div>
-              <div className="ai-grid">
-                <div className="ai-c">
-                  <div className="ai-c-lbl">💊 Treatment Protocol</div>
-                  <div className="ai-c-txt">{parsedDisease.Treatment}</div>
-                </div>
-                <div className="ai-c">
-                  <div className="ai-c-lbl">🛡️ Prevention Measures</div>
-                  <div className="ai-c-txt">{parsedDisease.Prevention}</div>
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="ai-empty">
-              <div className="ai-empty-icon">🌿</div>
-              <div style={{ fontSize: 14, color: "var(--text2)", marginBottom: 6 }}>No analysis performed yet</div>
-              <div style={{ fontSize: 12 }}>Click <strong style={{ color: "#a78bfa" }}>Analyze with AI</strong> above to detect plant diseases</div>
-            </div>
-          )}
-        </div>
-
-        {/* BOTTOM GRID */}
-        <div className="bg2">
-          <div className="c fade-in">
-            <div className="c-head">
-              <div className="c-title"><div className="c-dot" style={{ background: "var(--text3)" }}></div>Recent Sensor Records</div>
-              <div className="filter-tabs">
-                {(["ALL", "GOOD", "ALERT"] as const).map((filter) => (
-                  <button
-                    key={filter}
-                    className={`filter-btn ${historyFilter === filter ? "active" : ""}`}
-                    onClick={() => setHistoryFilter(filter)}
-                    type="button"
-                  >
-                    {filter}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {data
-              .filter((item) => {
-                if (historyFilter === "ALL") return true;
-                if (historyFilter === "GOOD") return item.status === "GOOD" || item.status === "NORMAL" || !item.status;
-                if (historyFilter === "ALERT") return item.status === "WARNING" || item.status === "DANGER" || item.status === "CRITICAL";
-                return true;
-              })
-              .slice(0, 5)
-              .map((item) => {
-                const sc = getStatusColor(item.status);
-                return (
-                  <div className="h-row" key={item.id}>
-                    <div className="h-dot" style={{ background: sc }}></div>
-                    <span className="h-val">🌡 {item.temperature}°C</span>
-                    <span className="h-val">💧 {item.humidity}%</span>
-                    <span className="h-val">🌱 {item.soilMoisture}%</span>
-                    <div className="h-tag" style={{ background: `${sc}18`, color: sc }}>{item.status || "NORMAL"}</div>
-                  </div>
-                );
-              })}
-          </div>
-
-          <div className="c fade-in fade-in-1">
-            <div className="c-head">
-              <div className="c-title"><div className="c-dot" style={{ background: "#a78bfa" }}></div>AI Analysis Log</div>
-            </div>
-            {imageHistory.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--text3)", textAlign: "center", padding: "24px 0" }}>No analyses yet</div>
-            ) : (
-              imageHistory.slice(0, 5).map((item, i) => {
-                const parsed = parseDisease(item.disease);
-                const sc = getSeverityColor(parsed?.Severity);
-                return (
-                  <div className="al-row" key={i} style={{ borderLeftColor: sc }}>
-                    <div style={{ flex: 1 }}>
-                      <div className="al-name">{parsed?.Severity === "None" ? "✅" : "⚠️"} {parsed?.Disease || "Unknown"}</div>
-                      <div className="al-time">{new Date(item.time).toLocaleString()}</div>
-                    </div>
-                    <span className="al-badge" style={{ background: `${sc}18`, color: sc }}>{parsed?.Severity || "N/A"}</span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* RELAY HISTORY — item 9, reuses existing AutoAction data */}
-          <div className="c fade-in fade-in-2">
-            <div className="c-head">
-              <div className="c-title"><div className="c-dot" style={{ background: "var(--amber)" }}></div>Relay History</div>
-            </div>
-            {relayHistory.length === 0 ? (
-              <div style={{ fontSize: 12, color: "var(--text3)", textAlign: "center", padding: "24px 0" }}>No relay actions yet</div>
-            ) : (
-              relayHistory.slice(0, 6).map((item) => (
-                <div className="h-row" key={item.id} style={{ justifyContent: "space-between" }}>
-                  <span>{item.action}</span>
-                  <span style={{ fontSize: 10.5, color: "var(--text3)", fontFamily: "var(--mono)", whiteSpace: "nowrap", marginLeft: 10 }}>
-                    {new Date(item.createdAt).toLocaleTimeString()}
+                  <span style={{ fontSize: 10, color: "var(--text-sub)", fontFamily: "var(--font-mono)" }}>
+                    {parsedDisease ? "DIAGNOSIS ACTIVE" : "STANDBY SCANNER"}
                   </span>
                 </div>
-              ))
-            )}
+
+                {parsedDisease ? (
+                  <>
+                    <div
+                      className="ai-diag-banner"
+                      style={{
+                        background: `${getSeverityColor(parsedDisease.Severity)}14`,
+                        border: `1px solid ${getSeverityColor(parsedDisease.Severity)}35`,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 9.5, color: "var(--text-sub)", textTransform: "uppercase", fontWeight: 700 }}>
+                          Detected Condition
+                        </div>
+                        <div className="ai-diag-name" style={{ color: getSeverityColor(parsedDisease.Severity) }}>
+                          {parsedDisease.Severity === "None" ? "✅ Leaf Tissue Healthy" : `⚠️ ${parsedDisease.Disease}`}
+                        </div>
+                      </div>
+                      <span
+                        className="ai-diag-sev"
+                        style={{
+                          background: `${getSeverityColor(parsedDisease.Severity)}22`,
+                          color: getSeverityColor(parsedDisease.Severity),
+                          border: `1px solid ${getSeverityColor(parsedDisease.Severity)}45`,
+                        }}
+                      >
+                        {parsedDisease.Severity || "NORMAL"}
+                      </span>
+                    </div>
+
+                    <div className="ai-doc-columns">
+                      <div className="ai-doc-box">
+                        <div className="ai-doc-k">💊 Treatment Protocol</div>
+                        <div className="ai-doc-v">{parsedDisease.Treatment}</div>
+                      </div>
+                      <div className="ai-doc-box">
+                        <div className="ai-doc-k">🛡️ Preventive Care</div>
+                        <div className="ai-doc-v">{parsedDisease.Prevention}</div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="ai-ready-guide">
+                    <div className="ai-guide-icon">🌿</div>
+                    <div>
+                      <div className="ai-guide-h">Optical Scanner Standing By</div>
+                      <div className="ai-guide-p">
+                        Click <strong>Analyze Camera Feed</strong> or upload a leaf photo to diagnose powdery mildew, chlorosis, blight, or nutrient deficiencies instantly.
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ══ RIGHT HUB: AUTOMATION, RELAYS & TELEMETRY HUB ══ */}
+          <div>
+            {/* 1. Microclimate Advisory Banner */}
+            <div className="bento-panel" style={{ padding: "16px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <div style={{ fontSize: 24 }}>{getRecommendationIcon()}</div>
+                  <div>
+                    <div style={{ fontSize: 10.5, color: "var(--text-sub)", fontWeight: 800, textTransform: "uppercase", letterSpacing: 0.6 }}>
+                      Microclimate Advisory Engine
+                    </div>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "#fff", marginTop: 2 }}>
+                      {getRecommendation()}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ padding: "4px 10px", borderRadius: 8, background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.25)", color: "var(--mint)", fontSize: 10.5, fontFamily: "var(--font-mono)", fontWeight: 800 }}>
+                  AUTO-BALANCED
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Switchboard (6 Relays) + Master Pump */}
+            <div className="bento-panel">
+              <div className="panel-header">
+                <div className="panel-title">
+                  <span className="title-dot" style={{ background: "var(--amber)" }}></span>
+                  Actuator & Relay Switchboard
+                </div>
+                <span style={{ fontSize: 10.5, color: "var(--text-sub)", fontFamily: "var(--font-mono)" }}>
+                  6 Independent Channels
+                </span>
+              </div>
+
+              {relayError && (
+                <div style={{ fontSize: 11.5, color: "var(--rose)", marginBottom: 10 }}>
+                  ⚠️ {relayError}
+                </div>
+              )}
+
+              {/* 6 Relay Actuator Grid */}
+              <div className="switch-grid">
+                {[
+                  { key: "nitrogen", icon: "🧪", label: "Nitrogen Line", sub: "N dosing injector" },
+                  { key: "phosphorus", icon: "⚗️", label: "Phosphorus Line", sub: "P nutrient feed" },
+                  { key: "potassium", icon: "💎", label: "Potassium Line", sub: "K enrichment valve" },
+                  { key: "water", icon: "🚿", label: "Drip Irrigation", sub: "Main water supply" },
+                  { key: "fan", icon: "🌀", label: "Ventilation Fan", sub: "Air circulation unit" },
+                  { key: "bulb", icon: "💡", label: "Growth Lighting", sub: "Photosynthesis bulb" },
+                ].map((r) => {
+                  const isOn = relayStatus?.[r.key] === "ON";
+                  const isLoading = relayLoadingKey === r.key;
+                  return (
+                    <button
+                      key={r.key}
+                      className={`switch-tile ${isOn ? "active" : ""}`}
+                      onClick={() => toggleRelay(r.key)}
+                      disabled={isLoading || !devices[0]}
+                      type="button"
+                    >
+                      <div className="switch-left">
+                        <div className="switch-icon-box">{r.icon}</div>
+                        <div>
+                          <div className="switch-title">{r.label}</div>
+                          <div className="switch-sub">{r.sub}</div>
+                        </div>
+                      </div>
+                      <div className="switch-pill">
+                        <span className="switch-dot"></span>
+                        {isLoading ? "SYNC..." : isOn ? "ON" : "OFF"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Master Water Pump Override Bar */}
+              <div className="master-pump-bar">
+                <div className="pump-info">
+                  <span className="pump-icon">🚰</span>
+                  <div>
+                    <div className="pump-label">Primary Drip Irrigation Pump</div>
+                    <div className="pump-desc">Direct solenoid valve override for Greenhouse Zone A-1</div>
+                  </div>
+                </div>
+                <button
+                  className={`pump-btn ${pumpActive ? "on" : "off"}`}
+                  onClick={togglePump}
+                  disabled={pumpLoading || !devices[0]}
+                  type="button"
+                >
+                  {pumpLoading ? "UPDATING..." : pumpActive ? "PUMP ACTIVE [ON]" : "STANDBY [OFF]"}
+                </button>
+              </div>
+            </div>
+
+            {/* 3. Interactive Telemetry Center (Tabs for Readings, Relays, AI logs) */}
+            <div className="bento-panel">
+              <div className="telemetry-tabs-bar">
+                <div className="tab-switcher">
+                  <button
+                    className={`tab-btn ${activeLogTab === "readings" ? "active" : ""}`}
+                    onClick={() => setActiveLogTab("readings")}
+                    type="button"
+                  >
+                    📡 Live Sensor Telemetry
+                  </button>
+                  <button
+                    className={`tab-btn ${activeLogTab === "relays" ? "active" : ""}`}
+                    onClick={() => setActiveLogTab("relays")}
+                    type="button"
+                  >
+                    ⚡ Relay Activity
+                  </button>
+                  <button
+                    className={`tab-btn ${activeLogTab === "ai" ? "active" : ""}`}
+                    onClick={() => setActiveLogTab("ai")}
+                    type="button"
+                  >
+                    🤖 AI Scan Logs
+                  </button>
+                </div>
+
+                {activeLogTab === "readings" && (
+                  <div className="filter-chip-group">
+                    {(["ALL", "GOOD", "ALERT"] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        className={`filter-chip ${historyFilter === filter ? "active" : ""}`}
+                        onClick={() => setHistoryFilter(filter)}
+                        type="button"
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tab 1: Live Sensor Telemetry */}
+              {activeLogTab === "readings" && (
+                <div className="telemetry-list">
+                  {data
+                    .filter((item) => {
+                      if (historyFilter === "ALL") return true;
+                      if (historyFilter === "GOOD") return item.status === "GOOD" || item.status === "NORMAL" || !item.status;
+                      if (historyFilter === "ALERT") return item.status === "WARNING" || item.status === "DANGER" || item.status === "CRITICAL";
+                      return true;
+                    })
+                    .slice(0, 6)
+                    .map((item) => {
+                      const sc = getStatusColor(item.status);
+                      return (
+                        <div className="telemetry-row" key={item.id}>
+                          <div className="tele-left">
+                            <span className="tele-dot" style={{ background: sc }}></span>
+                            <span style={{ fontSize: 11, color: "var(--text-sub)", fontFamily: "var(--font-mono)" }}>
+                              #{item.id}
+                            </span>
+                            <div className="tele-vals">
+                              <span>🌡 {item.temperature}°C</span>
+                              <span>💧 {item.humidity}%</span>
+                              <span>🌱 {item.soilMoisture}%</span>
+                              <span>🧪 pH {item.ph}</span>
+                            </div>
+                          </div>
+                          <span
+                            className="tele-tag"
+                            style={{ background: `${sc}18`, color: sc, border: `1px solid ${sc}35` }}
+                          >
+                            {item.status || "NORMAL"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* Tab 2: Relay History */}
+              {activeLogTab === "relays" && (
+                <div className="telemetry-list">
+                  {relayHistory.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--text-sub)", textAlign: "center", padding: "20px 0" }}>
+                      No manual actuator triggers recorded yet.
+                    </div>
+                  ) : (
+                    relayHistory.slice(0, 6).map((item) => (
+                      <div className="telemetry-row" key={item.id}>
+                        <div className="tele-left">
+                          <span className="tele-dot" style={{ background: "var(--amber)" }}></span>
+                          <span style={{ fontWeight: 600, color: "#fff" }}>{item.action}</span>
+                        </div>
+                        <span style={{ fontSize: 11, color: "var(--text-sub)", fontFamily: "var(--font-mono)" }}>
+                          {new Date(item.createdAt).toLocaleTimeString()}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Tab 3: AI Scan History */}
+              {activeLogTab === "ai" && (
+                <div className="telemetry-list">
+                  {imageHistory.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "var(--text-sub)", textAlign: "center", padding: "20px 0" }}>
+                      No previous Gemini vision scans found.
+                    </div>
+                  ) : (
+                    imageHistory.slice(0, 6).map((item, idx) => {
+                      const parsed = parseDisease(item.disease);
+                      const sc = getSeverityColor(parsed?.Severity);
+                      return (
+                        <div className="telemetry-row" key={idx}>
+                          <div className="tele-left">
+                            <span className="tele-dot" style={{ background: sc }}></span>
+                            <span style={{ fontWeight: 600, color: "#fff" }}>
+                              {parsed?.Severity === "None" ? "✅ Healthy Foliage" : `⚠️ ${parsed?.Disease || "Leaf Disease"}`}
+                            </span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 10.5, color: "var(--text-sub)", fontFamily: "var(--font-mono)" }}>
+                              {new Date(item.time).toLocaleTimeString()}
+                            </span>
+                            <span className="tele-tag" style={{ background: `${sc}18`, color: sc }}>
+                              {parsed?.Severity || "N/A"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="foot">
-          AgroSense Smart Irrigation Platform · Next.js + NestJS + Gemini AI · India 🇮🇳
-        </div>
+        {/* ── FOOTER ── */}
+        <footer className="cockpit-footer">
+          <div>AgroSense Precision Agriculture · Enterprise Smart Irrigation Engine</div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>
+            Next.js 16 · NestJS 11 · PostgreSQL 15 · Gemini Vision AI · India 🇮🇳
+          </div>
+        </footer>
 
-        {/* AI ANALYSIS RESULT MODAL (local upload path) */}
+        {/* ── LOCAL FILE UPLOAD RESULT MODAL ── */}
         {aiModalOpen && (
-          <div
-            onClick={() => setAiModalOpen(false)}
-            style={{
-              position: "fixed", inset: 0, background: "rgba(0,0,0,0.72)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              zIndex: 200, padding: 20, backdropFilter: "blur(4px)",
-            }}
-          >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                background: "var(--bg2)", border: "1px solid var(--border2)",
-                borderRadius: 18, padding: 24, maxWidth: 440, width: "100%",
-                maxHeight: "85vh", overflowY: "auto",
-                boxShadow: "0 24px 60px rgba(0,0,0,0.5)",
-              }}
-            >
+          <div className="modal-overlay" onClick={() => setAiModalOpen(false)}>
+            <div className="modal-box" onClick={(e) => e.stopPropagation()}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <div className="c-title"><div className="c-dot" style={{ background: "#a78bfa" }}></div>AI Analysis Result</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>🤖</span> AI Upload Diagnosis
+                </div>
                 <button
                   onClick={() => setAiModalOpen(false)}
-                  style={{ background: "none", border: "none", color: "var(--text3)", cursor: "pointer", fontSize: 18 }}
-                >✕</button>
+                  style={{ background: "none", border: "none", color: "var(--text-sub)", cursor: "pointer", fontSize: 18 }}
+                >
+                  ✕
+                </button>
               </div>
 
               {aiError ? (
-                <div style={{ color: "var(--red, #f87171)", fontSize: 13.5, lineHeight: 1.6 }}>
+                <div style={{ color: "var(--rose)", fontSize: 13, lineHeight: 1.6 }}>
                   ⚠️ {aiError}
                 </div>
               ) : aiResult ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {aiResult.imageUrl && (
-                    <img src={aiResult.imageUrl} alt="Analyzed plant" style={{ width: "100%", borderRadius: 12, maxHeight: 200, objectFit: "cover" }} />
+                    <img
+                      src={aiResult.imageUrl}
+                      alt="Uploaded plant specimen"
+                      style={{ width: "100%", borderRadius: 12, maxHeight: 200, objectFit: "cover" }}
+                    />
                   )}
                   <div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{aiResult.disease}</div>
-                    <div style={{ fontSize: 12, color: "var(--text3)", marginTop: 2 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>{aiResult.disease}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-sub)", marginTop: 2, fontFamily: "var(--font-mono)" }}>
                       Confidence: {Math.round(aiResult.confidence * 100)}% · Severity: {aiResult.severity}
                     </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1 }}>Recommendation</div>
-                    <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 4 }}>{aiResult.recommendation}</div>
+                  <div style={{ background: "rgba(255,255,255,0.03)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "var(--text-sub)", textTransform: "uppercase", letterSpacing: 0.8 }}>Recommendation</div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{aiResult.recommendation}</div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1 }}>Fertilizer</div>
-                    <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 4 }}>{aiResult.fertilizerSuggestion}</div>
+                  <div style={{ background: "rgba(255,255,255,0.03)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "var(--text-sub)", textTransform: "uppercase", letterSpacing: 0.8 }}>Fertilizer & Nutrition</div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{aiResult.fertilizerSuggestion}</div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text3)", textTransform: "uppercase", letterSpacing: 1 }}>Watering</div>
-                    <div style={{ fontSize: 13, color: "var(--text2)", marginTop: 4 }}>{aiResult.wateringSuggestion}</div>
+                  <div style={{ background: "rgba(255,255,255,0.03)", padding: 12, borderRadius: 10, border: "1px solid var(--border)" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: "var(--text-sub)", textTransform: "uppercase", letterSpacing: 0.8 }}>Irrigation Guidance</div>
+                    <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>{aiResult.wateringSuggestion}</div>
                   </div>
                 </div>
               ) : null}
             </div>
           </div>
         )}
-      </div>
       </div>
     </>
   );
