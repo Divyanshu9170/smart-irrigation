@@ -15,16 +15,31 @@ export class SensorReadingsService {
     private deviceRepo: Repository<Device>,
   ) {}
 
-  // ✅ CREATE SENSOR DATA
+  // ============================================
+  // CREATE SENSOR DATA
+  // ============================================
   async create(dto: any) {
-    const device = await this.deviceRepo.findOne({
-      where: { id: dto.deviceId },
+    // ESP32 sends a string such as "ESP32-0001".
+    // Search using Device.deviceId, NOT Device.id.
+    let device = await this.deviceRepo.findOne({
+      where: {
+        deviceId: dto.deviceId,
+      },
     });
 
-    if (!device) {
-      throw new NotFoundException('Device not found');
+    if (!device && dto.deviceId && !isNaN(Number(dto.deviceId))) {
+      device = await this.deviceRepo.findOne({
+        where: { id: Number(dto.deviceId) },
+      });
     }
 
+    if (!device) {
+      throw new NotFoundException(
+        `Device "${dto.deviceId}" not found`,
+      );
+    }
+
+    // Create the sensor reading and attach the actual Device entity.
     const reading = this.sensorRepo.create({
       temperature: dto.temperature,
       humidity: dto.humidity,
@@ -39,11 +54,34 @@ export class SensorReadingsService {
     return this.sensorRepo.save(reading);
   }
 
-  // ✅ GET ALL (LATEST FIRST)
+  // ============================================
+  // GET ALL SENSOR READINGS
+  // ============================================
   async findAll() {
     return this.sensorRepo.find({
       relations: ['device'],
-      order: { createdAt: 'DESC' },
+      order: {
+        createdAt: 'DESC',
+      },
+    });
+  }
+
+  // ============================================
+  // GET SENSOR READINGS FOR ONE USER
+  // ============================================
+  async findAllForUser(userId: number) {
+    return this.sensorRepo.find({
+      where: {
+        device: {
+          owner: {
+            id: userId,
+          },
+        },
+      },
+      relations: ['device', 'device.owner'],
+      order: {
+        createdAt: 'DESC',
+      },
     });
   }
 }

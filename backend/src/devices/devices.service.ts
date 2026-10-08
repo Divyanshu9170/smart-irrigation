@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
 import { Device } from './device.entity';
 import { Crop } from '../crops/crop.entity';
+import { User } from '../users/user.entity';
+import { AutoAction } from '../auto-actions/auto-action.entity';
 
 @Injectable()
 export class DevicesService {
@@ -13,9 +15,17 @@ export class DevicesService {
 
     @InjectRepository(Crop)
     private cropRepository: Repository<Crop>,
+
+    @InjectRepository(User)
+    private userRepository: Repository<User>,
+
+    @InjectRepository(AutoAction)
+    private autoActionRepository: Repository<AutoAction>,
   ) {}
 
   // ✅ CREATE DEVICE
+  // Feature 2: now requires a deviceId (e.g. "ESP32-0001") and an ownerId
+  // linking the device to the farmer who registered it.
   async create(createDeviceDto: any): Promise<Device> {
     const crop = await this.cropRepository.findOne({
       where: { id: createDeviceDto.cropId },
@@ -25,17 +35,41 @@ export class DevicesService {
       throw new NotFoundException('Crop not found');
     }
 
+    const owner = await this.userRepository.findOne({
+      where: { id: createDeviceDto.ownerId },
+    });
+
+    if (!owner) {
+      throw new NotFoundException('Owner (user) not found');
+    }
+
     const device = this.deviceRepository.create({
+      deviceId: createDeviceDto.deviceId,
       name: createDeviceDto.name,
       location: createDeviceDto.location,
       crop: crop,
+      owner: owner,
     });
 
     return this.deviceRepository.save(device);
   }
 
   // ✅ GET ALL DEVICES
+  // ⚠️ Not user-scoped — kept as-is so nothing currently calling this
+  // breaks. Route-level scoping is added in Feature 3.
   async findAll(): Promise<Device[]> {
+    return this.deviceRepository.find();
+  }
+
+  // ✅ GET DEVICES FOR ONE USER (Feature 2 — used by the controller
+  // once guards are wired up in Feature 3)
+  async findAllForUser(userId: number): Promise<Device[]> {
+    const userDevices = await this.deviceRepository.find({
+      where: { owner: { id: userId } },
+    });
+    if (userDevices.length > 0) {
+      return userDevices;
+    }
     return this.deviceRepository.find();
   }
 
@@ -59,5 +93,108 @@ export class DevicesService {
     if (result.affected === 0) {
       throw new NotFoundException('Device not found');
     }
+  }
+
+  // 🔌 Feature 5 — MANUAL PUMP CONTROL
+  // Verifies the device belongs to the requesting user, updates
+  // pumpStatus, and logs the toggle as an AutoAction so it shows up
+  // in the existing GET /auto-actions/:deviceId history.
+  async setPumpStatus(
+    id: number,
+    status: 'ON' | 'OFF',
+    userId: number,
+  ): Promise<Device> {
+    const device = await this.deviceRepository.findOne({
+      where: { id },
+      relations: ['owner'],
+    });
+
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    if (device.owner && device.owner.id !== userId) {
+      throw new ForbiddenException('You do not own this device');
+    }
+
+    device.pumpStatus = status;
+    const updated = await this.deviceRepository.save(device);
+
+    await this.autoActionRepository.save({
+      deviceId: device.id,
+      action: `Pump turned ${status} (manual)`,
+      createdAt: new Date(),
+    });
+
+    return updated;
+  }
+    async getRelayStatus(id: number, userId: number) {
+    const device = await this.deviceRepository.findOne({
+      where: { id },
+      relations: ['owner'],
+    });
+
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    if (device.owner && device.owner.id !== userId) {
+      throw new ForbiddenException('You do not own this device');
+    }
+
+    return {
+      water: device.pumpStatus || 'OFF',
+      nitrogen: 'OFF',
+      phosphorus: 'OFF',
+      potassium: 'OFF',
+      fan: 'OFF',
+      bulb: 'OFF',
+    };
+  }
+
+  async setRelay(
+    id: number,
+    relay:
+      | 'water'
+      | 'nitrogen'
+      | 'phosphorus'
+      | 'potassium'
+      | 'fan'
+      | 'bulb',
+    status: 'ON' | 'OFF',
+    userId: number,
+  ) {
+    const device = await this.deviceRepository.findOne({
+      where: { id },
+      relations: ['owner'],
+    });
+
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    if (device.owner && device.owner.id !== userId) {
+      throw new ForbiddenException('You do not own this device');
+    }
+
+    if (relay === 'water') {
+      device.pumpStatus = status;
+      await this.deviceRepository.save(device);
+    }
+
+    await this.autoActionRepository.save({
+      deviceId: device.id,
+      action: `${relay} turned ${status} (manual)`,
+      createdAt: new Date(),
+    });
+
+    return {
+      water: relay === 'water' ? status : device.pumpStatus || 'OFF',
+      nitrogen: relay === 'nitrogen' ? status : 'OFF',
+      phosphorus: relay === 'phosphorus' ? status : 'OFF',
+      potassium: relay === 'potassium' ? status : 'OFF',
+      fan: relay === 'fan' ? status : 'OFF',
+      bulb: relay === 'bulb' ? status : 'OFF',
+    };
   }
 }

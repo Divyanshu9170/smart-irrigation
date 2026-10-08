@@ -6,25 +6,25 @@ export class SensorReading {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
+  @Column('float')
   temperature: number;
 
-  @Column()
+  @Column('float')
   humidity: number;
 
   @Column('float')
   ph: number;
 
-  @Column()
+  @Column('float')
   soilMoisture: number;
 
-  @Column()
+  @Column('float')
   nitrogen: number;
 
-  @Column()
+  @Column('float')
   phosphorus: number;
 
-  @Column()
+  @Column('float')
   potassium: number;
 
   @ManyToOne(() => Device, (device) => device.readings, { eager: true })

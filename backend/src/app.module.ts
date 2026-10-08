@@ -6,6 +6,9 @@ import { DevicesModule } from './devices/devices.module';
 import { SensorReadingsModule } from './sensor-readings/sensor-readings.module';
 import { CropsModule } from './crops/crops.module';
 import { AutoActionsModule } from './auto-actions/auto-actions.module';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
+import { AiModule } from './ai/ai.module';
 
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -29,15 +32,20 @@ import { AppService } from './app.service';
       autoLoadEntities: true,
       synchronize: true,
 
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      ssl:
+        process.env.DB_SSL === 'true' ||
+        (process.env.DB_HOST && process.env.DB_HOST.includes('supabase'))
+          ? { rejectUnauthorized: false }
+          : false,
     }),
 
     DevicesModule,
     SensorReadingsModule,
     CropsModule,
     AutoActionsModule,
+    UsersModule,
+    AuthModule,
+    AiModule,
   ],
 
   controllers: [AppController],
