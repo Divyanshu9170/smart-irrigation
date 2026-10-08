@@ -128,6 +128,7 @@ export default function CropSelection() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | "Vegetable" | "Fruit" | "Herb">("All");
   const [selected, setSelected] = useState<Crop | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const filtered = useMemo(() => {
     return crops.filter((c) => {
@@ -159,7 +160,7 @@ export default function CropSelection() {
           position: sticky; top: 0; z-index: 100;
           display: flex; justify-content: space-between; align-items: center;
           padding: 14px 32px;
-          background: rgba(5,12,26,0.9); backdrop-filter: blur(20px);
+          background: rgba(5,12,26,0.92); backdrop-filter: blur(20px);
           border-bottom: 1px solid rgba(56,189,248,0.1);
         }
         .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
@@ -169,6 +170,52 @@ export default function CropSelection() {
         .nav-link { text-decoration: none; color: #94a3b8; font-size: 14px; font-weight: 500; padding: 7px 14px; border-radius: 8px; transition: all 0.2s; }
         .nav-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.06); }
         .nav-link.active { color: #38bdf8; background: rgba(56,189,248,0.1); }
+        .mobile-toggle {
+          display: none; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+          width: 36px; height: 36px; border-radius: 9px; color: #fff; font-size: 18px;
+          cursor: pointer; align-items: center; justify-content: center;
+        }
+        .mobile-drawer {
+          display: none;
+        }
+
+        @media(max-width: 768px) {
+          .navbar { padding: 12px 16px; }
+          .nav-links { display: none; }
+          .mobile-toggle { display: flex; }
+          .mobile-drawer {
+            display: flex; flex-direction: column; gap: 6px; padding: 16px;
+            background: rgba(8, 14, 25, 0.98); border-bottom: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(20px);
+          }
+          .mobile-drawer-link {
+            color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500;
+            padding: 9px 12px; border-radius: 8px; transition: all 0.2s;
+          }
+          .mobile-drawer-link:hover, .mobile-drawer-link.active {
+            color: #38bdf8; background: rgba(56,189,248,0.1);
+          }
+          .hero { padding: 40px 16px 28px !important; }
+          .hero-title { font-size: clamp(26px, 6vw, 36px) !important; }
+          .hero-sub { font-size: 13.5px !important; }
+          .main { padding: 20px 14px !important; }
+          .controls { gap: 10px !important; margin-bottom: 20px !important; }
+          .search-wrap { min-width: 100% !important; }
+          .filter-btns { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+          .filter-btn { white-space: nowrap; padding: 8px 14px; font-size: 12px; }
+          .crop-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
+          .crop-card { border-radius: 12px; }
+          .crop-photo-wrap { height: 120px !important; }
+          .crop-info { padding: 10px !important; }
+          .crop-name { font-size: 12.5px !important; }
+          .crop-note { font-size: 10px !important; margin-bottom: 6px !important; }
+          .crop-param { padding: 4px 6px !important; }
+          .param-label { font-size: 8px !important; }
+          .param-value { font-size: 9.5px !important; }
+        }
+        @media(max-width: 360px) {
+          .crop-grid { grid-template-columns: 1fr !important; }
+        }
 
         .hero {
           padding: 60px 32px 48px; text-align: center;
@@ -226,8 +273,8 @@ export default function CropSelection() {
 
         /* DETAIL PANEL */
         .detail-panel {
-          position: fixed; right: 0; top: 0; bottom: 0; width: 340px;
-          background: rgba(10,18,35,0.97); border-left: 1px solid rgba(255,255,255,0.08);
+          position: fixed; right: 0; top: 0; bottom: 0; width: min(380px, 100vw);
+          background: rgba(10,18,35,0.98); border-left: 1px solid rgba(255,255,255,0.08);
           backdrop-filter: blur(20px); z-index: 200;
           overflow-y: auto; padding: 24px;
           transform: translateX(100%); transition: transform 0.3s ease;
@@ -274,7 +321,25 @@ export default function CropSelection() {
           <Link href="/contact" className="nav-link">Contact</Link>
           <Link href="/login" className="nav-link">Login</Link>
         </div>
+        <button
+          className="mobile-toggle"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle navigation"
+        >
+          {mobileMenuOpen ? "✕" : "☰"}
+        </button>
       </nav>
+
+      {/* Mobile Drawer */}
+      {mobileMenuOpen && (
+        <div className="mobile-drawer">
+          <Link href="/" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>📊 Dashboard</Link>
+          <Link href="/crop" className="mobile-drawer-link active" onClick={() => setMobileMenuOpen(false)}>🌾 Crops Encyclopedia</Link>
+          <Link href="/about" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>👥 About Team</Link>
+          <Link href="/contact" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>📬 Contact</Link>
+          <Link href="/login" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>🔑 Farmer Login</Link>
+        </div>
+      )}
 
       {/* HERO */}
       <div className="hero">

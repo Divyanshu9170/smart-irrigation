@@ -90,6 +90,11 @@ export default function Register() {
           border: 1px solid rgba(255,255,255,0.06);
           border-radius: 20px; padding: 32px;
         }
+        @media(max-width: 480px) {
+          .reg-page { padding: 24px 14px; }
+          .reg-card { padding: 20px 16px; border-radius: 16px; }
+          .reg-title { font-size: 24px; }
+        }
 
         .form-group { margin-bottom: 16px; }
         .form-label {

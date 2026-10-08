@@ -41,6 +41,7 @@ const teamMembers = [
 export default function About() {
   const [visible, setVisible] = useState(false);
   const [activeCard, setActiveCard] = useState<number | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     setTimeout(() => setVisible(true), 100);
@@ -57,7 +58,7 @@ export default function About() {
           position: sticky; top: 0; z-index: 100;
           display: flex; justify-content: space-between; align-items: center;
           padding: 14px 32px;
-          background: rgba(5,12,26,0.85);
+          background: rgba(5,12,26,0.9);
           backdrop-filter: blur(20px);
           border-bottom: 1px solid rgba(56,189,248,0.1);
         }
@@ -75,6 +76,47 @@ export default function About() {
         }
         .nav-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.06); }
         .nav-link.active { color: #38bdf8; background: rgba(56,189,248,0.1); }
+        .mobile-toggle {
+          display: none; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+          width: 36px; height: 36px; border-radius: 9px; color: #fff; font-size: 18px;
+          cursor: pointer; align-items: center; justify-content: center;
+        }
+        .mobile-drawer {
+          display: none;
+        }
+
+        @media(max-width: 768px) {
+          .navbar { padding: 12px 16px; }
+          .nav-links { display: none; }
+          .mobile-toggle { display: flex; }
+          .mobile-drawer {
+            display: flex; flex-direction: column; gap: 6px; padding: 16px;
+            background: rgba(8, 14, 25, 0.98); border-bottom: 1px solid rgba(255,255,255,0.08);
+            backdrop-filter: blur(20px);
+          }
+          .mobile-drawer-link {
+            color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500;
+            padding: 9px 12px; border-radius: 8px; transition: all 0.2s;
+          }
+          .mobile-drawer-link:hover, .mobile-drawer-link.active {
+            color: #38bdf8; background: rgba(56,189,248,0.1);
+          }
+          .about-hero { padding: 48px 16px 36px !important; }
+          .about-title { font-size: clamp(28px, 7vw, 42px) !important; }
+          .about-sub { font-size: 14px !important; }
+          .section, .team-section, .project-section { padding: 40px 16px !important; }
+          .vm-grid { grid-template-columns: 1fr !important; }
+          .stats-row { grid-template-columns: repeat(2, 1fr) !important; padding: 20px 14px !important; gap: 12px !important; }
+          .stat-num { font-size: 26px !important; }
+          .team-grid { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; margin-top: 28px !important; }
+          .team-photo-wrap { height: 170px !important; }
+          .team-info { padding: 14px !important; }
+          .team-name { font-size: 14px !important; }
+          .tech-grid { grid-template-columns: 1fr !important; }
+        }
+        @media(max-width: 440px) {
+          .team-grid { grid-template-columns: 1fr !important; }
+        }
 
         .fade-up {
           opacity: 0; transform: translateY(30px);
@@ -264,7 +306,25 @@ export default function About() {
           <Link href="/contact" className="nav-link">Contact</Link>
           <Link href="/login" className="nav-link">Login</Link>
         </div>
+        <button
+          className="mobile-toggle"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle navigation"
+        >
+          {mobileMenuOpen ? "✕" : "☰"}
+        </button>
       </nav>
+
+      {/* Mobile Drawer */}
+      {mobileMenuOpen && (
+        <div className="mobile-drawer">
+          <Link href="/" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>📊 Dashboard</Link>
+          <Link href="/about" className="mobile-drawer-link active" onClick={() => setMobileMenuOpen(false)}>👥 About Team</Link>
+          <Link href="/crop" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>🌾 Crops Encyclopedia</Link>
+          <Link href="/contact" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>📬 Contact</Link>
+          <Link href="/login" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>🔑 Farmer Login</Link>
+        </div>
+      )}
 
       {/* HERO */}
       <div className="about-hero">

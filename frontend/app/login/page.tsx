@@ -141,6 +141,11 @@ export default function Login() {
           padding: 48px 32px;
           background: #050c1a;
         }
+        @media(max-width: 480px) {
+          .login-right { padding: 32px 18px; }
+          .login-title { font-size: 25px; }
+          .modal-card { padding: 22px 16px; border-radius: 16px; }
+        }
         .login-box {
           width: 100%; max-width: 420px;
         }
