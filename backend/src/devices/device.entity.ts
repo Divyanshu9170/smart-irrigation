@@ -42,7 +42,7 @@ export class Device {
   // 🔗 Device belongs to one farmer (Feature 2 — device ownership).
   // NOT eager — eager-loading would leak the full User object
   // (including the hashed password) in every device API response.
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { nullable: true })
   owner: User;
 
   // 🔗 Device has many sensor readings

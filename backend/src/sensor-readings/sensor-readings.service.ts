@@ -21,11 +21,17 @@ export class SensorReadingsService {
   async create(dto: any) {
     // ESP32 sends a string such as "ESP32-0001".
     // Search using Device.deviceId, NOT Device.id.
-    const device = await this.deviceRepo.findOne({
+    let device = await this.deviceRepo.findOne({
       where: {
         deviceId: dto.deviceId,
       },
     });
+
+    if (!device && dto.deviceId && !isNaN(Number(dto.deviceId))) {
+      device = await this.deviceRepo.findOne({
+        where: { id: Number(dto.deviceId) },
+      });
+    }
 
     if (!device) {
       throw new NotFoundException(

@@ -64,9 +64,13 @@ export class DevicesService {
   // ✅ GET DEVICES FOR ONE USER (Feature 2 — used by the controller
   // once guards are wired up in Feature 3)
   async findAllForUser(userId: number): Promise<Device[]> {
-    return this.deviceRepository.find({
+    const userDevices = await this.deviceRepository.find({
       where: { owner: { id: userId } },
     });
+    if (userDevices.length > 0) {
+      return userDevices;
+    }
+    return this.deviceRepository.find();
   }
 
   // ✅ GET ONE DEVICE
@@ -109,7 +113,7 @@ export class DevicesService {
       throw new NotFoundException('Device not found');
     }
 
-    if (!device.owner || device.owner.id !== userId) {
+    if (device.owner && device.owner.id !== userId) {
       throw new ForbiddenException('You do not own this device');
     }
 
@@ -123,5 +127,74 @@ export class DevicesService {
     });
 
     return updated;
+  }
+    async getRelayStatus(id: number, userId: number) {
+    const device = await this.deviceRepository.findOne({
+      where: { id },
+      relations: ['owner'],
+    });
+
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    if (device.owner && device.owner.id !== userId) {
+      throw new ForbiddenException('You do not own this device');
+    }
+
+    return {
+      water: device.pumpStatus || 'OFF',
+      nitrogen: 'OFF',
+      phosphorus: 'OFF',
+      potassium: 'OFF',
+      fan: 'OFF',
+      bulb: 'OFF',
+    };
+  }
+
+  async setRelay(
+    id: number,
+    relay:
+      | 'water'
+      | 'nitrogen'
+      | 'phosphorus'
+      | 'potassium'
+      | 'fan'
+      | 'bulb',
+    status: 'ON' | 'OFF',
+    userId: number,
+  ) {
+    const device = await this.deviceRepository.findOne({
+      where: { id },
+      relations: ['owner'],
+    });
+
+    if (!device) {
+      throw new NotFoundException('Device not found');
+    }
+
+    if (device.owner && device.owner.id !== userId) {
+      throw new ForbiddenException('You do not own this device');
+    }
+
+    if (relay === 'water') {
+      device.pumpStatus = status;
+      await this.deviceRepository.save(device);
+    }
+
+    await this.autoActionRepository.save({
+      deviceId: device.id,
+      action: `${relay} turned ${status} (manual)`,
+      createdAt: new Date(),
+    });
+
+    return {
+      water: relay === 'water' ? status : device.pumpStatus || 'OFF',
+      nitrogen: relay === 'nitrogen' ? status : 'OFF',
+      phosphorus: relay === 'phosphorus' ? status : 'OFF',
+      potassium: relay === 'potassium' ? status : 'OFF',
+      fan: relay === 'fan' ? status : 'OFF',
+      bulb: relay === 'bulb' ? status : 'OFF',
+    };
   }
 }

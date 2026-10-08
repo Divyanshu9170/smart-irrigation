@@ -8,7 +8,7 @@ type User = { id: number; name: string; email: string };
 type AuthContextType = {
   token: string | null;
   user: User | null;
-  loading: boolean; // true while we're checking localStorage on first load
+  loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
@@ -24,7 +24,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ On first load, restore any existing session from localStorage
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY);
     const storedUser = localStorage.getItem(USER_KEY);
@@ -33,7 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setUser(JSON.parse(storedUser));
       } catch {
-        // corrupted value — ignore and stay logged out
+        // corrupted value — ignore, stay logged out
       }
     }
     setLoading(false);
@@ -45,12 +44,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
-
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.message || "Invalid email or password");
     }
-
     const result = await res.json();
     localStorage.setItem(TOKEN_KEY, result.accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(result.user));
@@ -64,15 +61,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, email, password }),
     });
-
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.message || "Registration failed");
     }
-
     const result = await res.json();
-    // ✅ /auth/register already returns a token — log the farmer in
-    // immediately instead of making them log in again right after.
     localStorage.setItem(TOKEN_KEY, result.accessToken);
     localStorage.setItem(USER_KEY, JSON.stringify(result.user));
     setToken(result.accessToken);

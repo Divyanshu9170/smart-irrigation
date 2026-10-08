@@ -1,8 +1,7 @@
 // ✅ Central place for the backend URL + authenticated fetch helper.
-// Replaces the hardcoded "https://smart-irrigation-1-mawh.onrender.com"
-// that was previously repeated in app/page.tsx.
-
-
+// API_BASE_URL is env-driven so the frontend never hardcodes
+// localhost:5000 — set NEXT_PUBLIC_API_URL in .env.local (dev) and in
+// your deployment platform's env vars (prod) to your deployed backend URL.
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -14,8 +13,7 @@ export function getToken(): string | null {
 }
 
 // ✅ Wraps fetch() and attaches "Authorization: Bearer <token>" when a
-// token is available. Safe to use on public routes too — if there's no
-// token, it just behaves like a normal fetch.
+// token is available. Safe to use on public routes too.
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const token = getToken();
 

@@ -32,9 +32,11 @@ import { AppService } from './app.service';
       autoLoadEntities: true,
       synchronize: true,
 
-      ssl: {
-        rejectUnauthorized: false,
-      },
+      ssl:
+        process.env.DB_SSL === 'true' ||
+        (process.env.DB_HOST && process.env.DB_HOST.includes('supabase'))
+          ? { rejectUnauthorized: false }
+          : false,
     }),
 
     DevicesModule,
