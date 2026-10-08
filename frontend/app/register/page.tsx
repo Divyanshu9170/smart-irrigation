@@ -1,17 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/auth-context";
 
 export default function Register() {
   const { register } = useAuth();
   const [form, setForm] = useState({
-    name: "", email: "", password: "", confirm: "",
+    name: "",
+    email: "",
+    password: "",
+    confirm: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -20,20 +24,21 @@ export default function Register() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.email || !form.password || !form.confirm) {
-      setError("Please fill in all fields"); return;
+      setError("Please fill in all fields");
+      return;
     }
     if (form.password !== form.confirm) {
-      setError("Passwords do not match"); return;
+      setError("Passwords do not match");
+      return;
     }
     if (form.password.length < 6) {
-      setError("Password must be at least 6 characters"); return;
+      setError("Password must be at least 6 characters");
+      return;
     }
     setError("");
     setLoading(true);
     try {
       await register(form.name, form.email, form.password);
-      // ✅ register() already returns a token, so the farmer is signed
-      // in immediately — no need to make them log in again.
       window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -41,198 +46,312 @@ export default function Register() {
     }
   };
 
+  // 3D Canvas Background Animation
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+    let width = (canvas.width = window.innerWidth);
+    let height = (canvas.height = window.innerHeight);
+
+    const handleResize = () => {
+      width = canvas.width = window.innerWidth;
+      height = canvas.height = window.innerHeight;
+    };
+    window.addEventListener("resize", handleResize);
+
+    const particles: { x: number; y: number; vx: number; vy: number; radius: number; color: string }[] = [];
+    const count = 40;
+    const colors = ["rgba(16, 185, 129, ", "rgba(6, 182, 212, ", "rgba(52, 211, 153, "];
+
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: (Math.random() - 0.5) * 0.6,
+        radius: Math.random() * 2 + 1,
+        color: colors[Math.floor(Math.random() * colors.length)],
+      });
+    }
+
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      for (let i = 0; i < count; i++) {
+        const p1 = particles[i];
+        p1.x += p1.vx;
+        p1.y += p1.vy;
+
+        if (p1.x < 0 || p1.x > width) p1.vx *= -1;
+        if (p1.y < 0 || p1.y > height) p1.vy *= -1;
+
+        ctx.fillStyle = `${p1.color}0.6)`;
+        ctx.beginPath();
+        ctx.arc(p1.x, p1.y, p1.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (let j = i + 1; j < count; j++) {
+          const p2 = particles[j];
+          const dx = p1.x - p2.x;
+          const dy = p1.y - p2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 110) {
+            ctx.strokeStyle = `rgba(16, 185, 129, ${(1 - dist / 110) * 0.25})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #050c1a; font-family: 'DM Sans', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+          --bg-dark: #05080e;
+          --bg-panel: rgba(12, 18, 30, 0.85);
+          --bg-card: rgba(16, 25, 42, 0.78);
+          --border: rgba(255, 255, 255, 0.08);
+          --border-glow: rgba(16, 185, 129, 0.4);
+          --primary-emerald: #10b981;
+          --mint: #34d399;
+          --cyan: #06b6d4;
+          --amber: #f59e0b;
+          --text-white: #ffffff;
+          --text-main: #f1f5f9;
+          --text-muted: #94a3b8;
+          --text-sub: #64748b;
+          --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+          background-color: var(--bg-dark);
+          color: var(--text-main);
+          font-family: var(--font-sans);
+          min-height: 100vh;
+        }
 
         .reg-page {
           min-height: 100vh;
           display: flex; align-items: center; justify-content: center;
-          background: #050c1a;
-          background-image: radial-gradient(ellipse 60% 50% at 50% 0%, rgba(56,189,248,0.06) 0%, transparent 70%);
-          padding: 40px 20px;
+          position: relative; overflow: hidden;
+          padding: 50px 20px;
+          background: radial-gradient(ellipse 80% 60% at 50% 20%, rgba(16, 185, 129, 0.12), transparent 70%),
+                      radial-gradient(circle at 80% 80%, rgba(6, 182, 212, 0.08), transparent 50%);
         }
-
-        .reg-box { width: 100%; max-width: 460px; }
+        .reg-canvas {
+          position: absolute; inset: 0; width: 100%; height: 100%;
+          pointer-events: none; z-index: 1; opacity: 0.7;
+        }
+        .reg-box {
+          width: 100%; max-width: 480px; position: relative; z-index: 2;
+        }
 
         .reg-logo {
-          display: flex; align-items: center; gap: 10px;
-          text-decoration: none; margin-bottom: 36px;
-          justify-content: center;
+          display: flex; align-items: center; gap: 12px; text-decoration: none;
+          margin-bottom: 32px; justify-content: center;
         }
         .reg-logo-icon {
-          width: 38px; height: 38px; border-radius: 10px;
-          background: linear-gradient(135deg, #0ea5e9, #22c55e);
-          display: flex; align-items: center; justify-content: center; font-size: 20px;
+          width: 44px; height: 44px; border-radius: 12px;
+          background: linear-gradient(135deg, #10b981, #06b6d4);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 24px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
         }
         .reg-logo-text {
-          font-family: 'Syne', sans-serif; font-weight: 700;
-          font-size: 18px; color: #f0f9ff;
+          font-size: 22px; font-weight: 900; letter-spacing: -0.5px;
+          color: var(--text-white);
         }
-
-        .reg-header { text-align: center; margin-bottom: 32px; }
-        .reg-tag {
-          font-size: 11px; font-weight: 600; letter-spacing: 2px;
-          text-transform: uppercase; color: #22c55e; margin-bottom: 10px;
+        .reg-logo-badge {
+          font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+          padding: 2px 7px; border-radius: 6px;
+          background: rgba(16, 185, 129, 0.15); color: var(--mint);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          margin-left: 6px;
         }
-        .reg-title {
-          font-family: 'Syne', sans-serif; font-size: 28px;
-          font-weight: 800; color: #f0f9ff; letter-spacing: -0.5px;
-          margin-bottom: 8px;
-        }
-        .reg-sub { font-size: 14px; color: #475569; }
 
         .reg-card {
-          background: rgba(15,23,42,0.8);
-          border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 20px; padding: 32px;
+          background: var(--bg-card); border: 1px solid var(--border);
+          border-radius: 24px; padding: 38px 34px; backdrop-filter: blur(25px);
+          box-shadow: 0 20px 50px rgba(0,0,0,0.5);
         }
-        @media(max-width: 480px) {
-          .reg-page { padding: 24px 14px; }
-          .reg-card { padding: 20px 16px; border-radius: 16px; }
-          .reg-title { font-size: 24px; }
+        .reg-header {
+          text-align: center; margin-bottom: 26px;
         }
-
-        .form-group { margin-bottom: 16px; }
-        .form-label {
-          display: block; font-size: 12px; font-weight: 600;
-          color: #64748b; letter-spacing: 0.5px; text-transform: uppercase;
+        .reg-tag {
+          font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+          color: var(--mint); text-transform: uppercase; letter-spacing: 1.5px;
           margin-bottom: 8px;
         }
-        .form-input-wrap { position: relative; }
+        .reg-title {
+          font-size: 26px; font-weight: 900; letter-spacing: -0.6px;
+          color: var(--text-white); margin-bottom: 6px;
+        }
+        .reg-sub {
+          font-size: 14px; color: var(--text-muted);
+        }
+
+        .form-error {
+          background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #fca5a5; padding: 12px 14px; border-radius: 12px;
+          font-size: 13px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;
+        }
+
+        .form-group {
+          margin-bottom: 18px;
+        }
+        .form-label {
+          display: block; font-size: 11.5px; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-main);
+          margin-bottom: 7px;
+        }
+        .form-input-wrap {
+          position: relative; width: 100%;
+        }
         .form-input {
-          width: 100%; padding: 13px 16px;
-          background: rgba(5,12,26,0.8);
-          border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 10px; color: #e2e8f0;
-          font-size: 14px; font-family: 'DM Sans', sans-serif;
+          width: 100%; padding: 12px 16px; border-radius: 12px;
+          background: rgba(8, 14, 25, 0.85); border: 1px solid var(--border);
+          color: var(--text-white); font-family: var(--font-sans); font-size: 14px;
           outline: none; transition: all 0.2s;
         }
         .form-input:focus {
-          border-color: rgba(34,197,94,0.4);
-          box-shadow: 0 0 0 3px rgba(34,197,94,0.06);
+          border-color: var(--mint);
+          box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+          background: rgba(10, 18, 32, 0.95);
         }
-        .form-input::placeholder { color: #334155; }
-        .form-input.has-icon { padding-right: 48px; }
+        .form-input.has-icon {
+          padding-right: 46px;
+        }
         .input-icon {
-          position: absolute; right: 14px; top: 50%;
-          transform: translateY(-50%);
-          color: #475569; cursor: pointer; font-size: 16px;
-          background: none; border: none; padding: 0; transition: color 0.2s;
+          position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+          background: none; border: none; font-size: 16px; cursor: pointer;
+          color: var(--text-sub); padding: 4px; border-radius: 6px;
         }
-        .input-icon:hover { color: #94a3b8; }
-
-        .form-error {
-          background: rgba(239,68,68,0.08);
-          border: 1px solid rgba(239,68,68,0.2);
-          color: #fca5a5; font-size: 13px;
-          padding: 10px 14px; border-radius: 10px;
-          margin-bottom: 16px;
-        }
+        .input-icon:hover { color: var(--text-main); }
 
         .reg-btn {
-          width: 100%; padding: 14px;
-          background: linear-gradient(135deg, #16a34a, #15803d);
-          border: none; border-radius: 12px;
-          color: white; font-size: 15px; font-weight: 600;
-          font-family: 'DM Sans', sans-serif;
-          cursor: pointer; transition: all 0.2s;
-          margin-top: 8px;
-          box-shadow: 0 4px 20px rgba(34,197,94,0.2);
+          width: 100%; padding: 14px 20px; border-radius: 12px;
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          border: none; color: #fff; font-size: 15px; font-weight: 800;
+          cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
           display: flex; align-items: center; justify-content: center; gap: 8px;
+          margin-top: 22px;
         }
         .reg-btn:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 6px 28px rgba(34,197,94,0.3);
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px rgba(16, 185, 129, 0.45);
         }
-        .reg-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+        .reg-btn:disabled {
+          opacity: 0.6; cursor: not-allowed;
+        }
 
-        .spinner {
-          width: 16px; height: 16px; border-radius: 50%;
-          border: 2px solid rgba(255,255,255,0.3);
-          border-top-color: white;
-          animation: spin 0.8s linear infinite;
+        .signin-box {
+          margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);
+          text-align: center; font-size: 13.5px; color: var(--text-sub);
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .signin-link {
+          color: var(--mint); font-weight: 700; text-decoration: none; margin-left: 6px;
+        }
+        .signin-link:hover { text-decoration: underline; }
 
-        .login-redirect {
-          text-align: center; margin-top: 20px;
-          font-size: 14px; color: #475569;
+        @media(max-width: 480px) {
+          .reg-card { padding: 26px 20px; border-radius: 18px; }
+          .reg-title { font-size: 22px; }
         }
-        .login-redirect a {
-          color: #38bdf8; text-decoration: none; font-weight: 600;
-          transition: color 0.2s;
-        }
-        .login-redirect a:hover { color: #7dd3fc; }
-
-        .back-home {
-          display: flex; align-items: center; justify-content: center; gap: 6px;
-          color: #334155; font-size: 13px; text-decoration: none;
-          margin-top: 16px; transition: color 0.2s;
-        }
-        .back-home:hover { color: #64748b; }
       `}</style>
 
       <div className="reg-page">
-        <div className="reg-box">
+        <canvas ref={canvasRef} className="reg-canvas" />
 
+        <div className="reg-box">
           <Link href="/" className="reg-logo">
             <div className="reg-logo-icon">🌱</div>
-            <span className="reg-logo-text">AgroSense</span>
+            <div>
+              <span className="reg-logo-text">SMART FARM</span>
+              <span className="reg-logo-badge">IoT Core</span>
+            </div>
           </Link>
 
-          <div className="reg-header">
-            <div className="reg-tag">Get started</div>
-            <h2 className="reg-title">Create your account</h2>
-            <p className="reg-sub">Join AgroSense and start monitoring your farm</p>
-          </div>
-
           <div className="reg-card">
+            <div className="reg-header">
+              <div className="reg-tag">New Registration</div>
+              <h1 className="reg-title">Join SMART FARM</h1>
+              <p className="reg-sub">Create your account to start managing smart irrigation</p>
+            </div>
+
             <form onSubmit={handleRegister}>
               {error && <div className="form-error">⚠️ {error}</div>}
 
               <div className="form-group">
                 <label className="form-label">Full Name</label>
-                <input
-                  type="text"
-                  name="name"
-                  className="form-input"
-                  placeholder="Your full name"
-                  value={form.name}
-                  onChange={handleChange}
-                />
+                <div className="form-input-wrap">
+                  <input
+                    type="text"
+                    name="name"
+                    className="form-input"
+                    placeholder="e.g. Divyanshu Kumawat"
+                    value={form.name}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
               </div>
 
               <div className="form-group">
                 <label className="form-label">Email Address</label>
-                <input
-                  type="email"
-                  name="email"
-                  className="form-input"
-                  placeholder="you@example.com"
-                  value={form.email}
-                  onChange={handleChange}
-                />
+                <div className="form-input-wrap">
+                  <input
+                    type="email"
+                    name="email"
+                    className="form-input"
+                    placeholder="you@example.com"
+                    value={form.email}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
               </div>
 
               <div className="form-group">
-                <label className="form-label">Password</label>
+                <label className="form-label">Password (min 6 characters)</label>
                 <div className="form-input-wrap">
                   <input
                     type={showPassword ? "text" : "password"}
                     name="password"
                     className="form-input has-icon"
-                    placeholder="Min. 6 characters"
+                    placeholder="Create a password"
                     value={form.password}
                     onChange={handleChange}
+                    required
                   />
                   <button
                     type="button"
                     className="input-icon"
                     onClick={() => setShowPassword(!showPassword)}
+                    title={showPassword ? "Hide password" : "Show password"}
                   >
                     {showPassword ? "🙈" : "👁️"}
                   </button>
@@ -241,35 +360,31 @@ export default function Register() {
 
               <div className="form-group">
                 <label className="form-label">Confirm Password</label>
-                <input
-                  type="password"
-                  name="confirm"
-                  className="form-input"
-                  placeholder="Re-enter your password"
-                  value={form.confirm}
-                  onChange={handleChange}
-                />
+                <div className="form-input-wrap">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="confirm"
+                    className="form-input"
+                    placeholder="Re-enter your password"
+                    value={form.confirm}
+                    onChange={handleChange}
+                    required
+                  />
+                </div>
               </div>
 
-              <button type="submit" className="reg-btn" disabled={loading}>
-                {loading ? (
-                  <><div className="spinner"></div> Creating account...</>
-                ) : (
-                  "Create Account →"
-                )}
+              <button type="submit" disabled={loading} className="reg-btn">
+                {loading ? "Creating Account..." : "Register Farm Account ➔"}
               </button>
             </form>
 
-            <div className="login-redirect">
-              Already have an account?{" "}
-              <Link href="/login">Sign in here</Link>
+            <div className="signin-box">
+              Already have an account?
+              <Link href="/login" className="signin-link">
+                Sign In ➔
+              </Link>
             </div>
           </div>
-
-          <Link href="/" className="back-home">
-            ← Back to Dashboard
-          </Link>
-
         </div>
       </div>
     </>

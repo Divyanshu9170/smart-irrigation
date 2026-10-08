@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
+import { useAuth } from "../lib/auth-context";
 
 type Crop = {
   name: string;
@@ -119,16 +120,18 @@ const sortedCrops: Crop[] = [...crops].sort((a, b) =>
 );
 
 const typeColors = {
-  Vegetable: { bg: "rgba(34,197,94,0.1)", border: "rgba(34,197,94,0.2)", text: "#22c55e" },
-  Fruit: { bg: "rgba(251,146,60,0.1)", border: "rgba(251,146,60,0.2)", text: "#fb923c" },
-  Herb: { bg: "rgba(56,189,248,0.1)", border: "rgba(56,189,248,0.2)", text: "#38bdf8" },
+  Vegetable: { bg: "rgba(16, 185, 129, 0.12)", border: "rgba(16, 185, 129, 0.3)", text: "#34d399" },
+  Fruit: { bg: "rgba(245, 158, 11, 0.12)", border: "rgba(245, 158, 11, 0.3)", text: "#fbbf24" },
+  Herb: { bg: "rgba(6, 182, 212, 0.12)", border: "rgba(6, 182, 212, 0.3)", text: "#22d3ee" },
 };
 
 export default function CropSelection() {
+  const { user, token, logout } = useAuth();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | "Vegetable" | "Fruit" | "Herb">("All");
   const [selected, setSelected] = useState<Crop | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const filtered = useMemo(() => {
     return crops.filter((c) => {
@@ -149,177 +152,580 @@ export default function CropSelection() {
     return map;
   }, [filtered]);
 
+  // 3D Canvas Wave Engine
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+    let width = (canvas.width = canvas.parentElement?.clientWidth || window.innerWidth);
+    let height = (canvas.height = canvas.parentElement?.clientHeight || 360);
+
+    const handleResize = () => {
+      if (!canvas.parentElement) return;
+      width = canvas.width = canvas.parentElement.clientWidth;
+      height = canvas.height = canvas.parentElement.clientHeight || 360;
+    };
+    window.addEventListener("resize", handleResize);
+
+    const cols = 22;
+    const rows = 10;
+    const spacingX = width / (cols - 1);
+    const spacingZ = 42;
+
+    const points: { x: number; y: number; z: number; origY: number; pulse: number }[] = [];
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = (c - cols / 2) * spacingX;
+        const z = (r + 1) * spacingZ;
+        const y = Math.sin((c / cols) * Math.PI * 2) * 20;
+        points.push({ x, y, z, origY: y, pulse: Math.random() * Math.PI * 2 });
+      }
+    }
+
+    let rotX = 0.26;
+    let rotY = 0;
+    let targetRotY = 0;
+    let time = 0;
+
+    const render = () => {
+      time += 0.02;
+      rotY += (targetRotY - rotY) * 0.05;
+
+      ctx.clearRect(0, 0, width, height);
+
+      const fov = 400;
+      const cameraY = -110;
+      const cameraZ = -130;
+
+      const cosX = Math.cos(rotX);
+      const sinX = Math.sin(rotX);
+      const cosY = Math.cos(rotY);
+      const sinY = Math.sin(rotY);
+
+      const projected: { px: number; py: number; alpha: number; scale: number }[] = [];
+
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        p.pulse += 0.03;
+        const waveY = p.origY + Math.sin(time + p.x * 0.015 + p.z * 0.02) * 16;
+
+        const x1 = p.x * cosY + p.z * sinY;
+        const z1 = -p.x * sinY + p.z * cosY;
+
+        const y2 = (waveY - cameraY) * cosX - (z1 - cameraZ) * sinX;
+        const z2 = (waveY - cameraY) * sinX + (z1 - cameraZ) * cosX;
+
+        if (z2 < 10) {
+          projected.push({ px: -999, py: -999, alpha: 0, scale: 0 });
+          continue;
+        }
+
+        const scale = fov / z2;
+        const px = width / 2 + x1 * scale;
+        const py = height / 2 + y2 * scale;
+        const distRatio = Math.max(0, Math.min(1, 1 - z2 / 800));
+
+        projected.push({ px, py, alpha: distRatio, scale });
+      }
+
+      ctx.lineWidth = 1;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const idx = r * cols + c;
+          const cur = projected[idx];
+          if (cur.px < -100) continue;
+
+          if (c < cols - 1) {
+            const right = projected[idx + 1];
+            if (right.px > -100) {
+              ctx.strokeStyle = `rgba(16, 185, 129, ${cur.alpha * 0.32})`;
+              ctx.beginPath();
+              ctx.moveTo(cur.px, cur.py);
+              ctx.lineTo(right.px, right.py);
+              ctx.stroke();
+            }
+          }
+
+          if (r < rows - 1) {
+            const down = projected[idx + cols];
+            if (down.px > -100) {
+              ctx.strokeStyle = `rgba(6, 182, 212, ${cur.alpha * 0.25})`;
+              ctx.beginPath();
+              ctx.moveTo(cur.px, cur.py);
+              ctx.lineTo(down.px, down.py);
+              ctx.stroke();
+            }
+          }
+
+          if ((r + c) % 3 === 0) {
+            const glow = (Math.sin(points[idx].pulse) + 1) * 0.5;
+            const rSize = Math.max(1.5, cur.scale * (2 + glow * 1.5));
+            ctx.fillStyle = `rgba(52, 211, 153, ${cur.alpha * (0.5 + glow * 0.5)})`;
+            ctx.beginPath();
+            ctx.arc(cur.px, cur.py, rSize, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const nx = (e.clientX - rect.left) / width - 0.5;
+      targetRotY = nx * 0.4;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("mousemove", handleMouseMove);
+    };
+  }, []);
+
+  // 3D Card Hover Perspective Handler
+  const handleCardTilt = (e: React.MouseEvent<HTMLElement>) => {
+    if (typeof window !== "undefined" && (window.innerWidth < 768 || !window.matchMedia("(hover: hover)").matches)) return;
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    const rx = ((y - cy) / cy) * -6;
+    const ry = ((x - cx) / cx) * 6;
+    el.style.transform = `perspective(800px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) translateY(-4px)`;
+  };
+
+  const handleCardReset = (e: React.MouseEvent<HTMLElement>) => {
+    e.currentTarget.style.transform = "perspective(800px) rotateX(0deg) rotateY(0deg) translateY(0px)";
+  };
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #050c1a; font-family: 'DM Sans', sans-serif; color: #e2e8f0; }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
 
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+          --bg-dark: #05080e;
+          --bg-panel: rgba(12, 18, 30, 0.82);
+          --bg-card: rgba(16, 25, 42, 0.72);
+          --border: rgba(255, 255, 255, 0.08);
+          --border-glow: rgba(16, 185, 129, 0.4);
+          --primary-emerald: #10b981;
+          --mint: #34d399;
+          --cyan: #06b6d4;
+          --amber: #f59e0b;
+          --text-white: #ffffff;
+          --text-main: #f1f5f9;
+          --text-muted: #94a3b8;
+          --text-sub: #64748b;
+          --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+          background-color: var(--bg-dark);
+          color: var(--text-main);
+          font-family: var(--font-sans);
+          min-height: 100vh;
+          overflow-x: hidden;
+          background-image:
+            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(16, 185, 129, 0.15), transparent 70%),
+            radial-gradient(circle at 90% 25%, rgba(6, 182, 212, 0.08), transparent 50%),
+            radial-gradient(circle at 10% 80%, rgba(16, 185, 129, 0.05), transparent 50%);
+        }
+
+        /* NAVBAR */
         .navbar {
           position: sticky; top: 0; z-index: 100;
           display: flex; justify-content: space-between; align-items: center;
-          padding: 14px 32px;
-          background: rgba(5,12,26,0.92); backdrop-filter: blur(20px);
-          border-bottom: 1px solid rgba(56,189,248,0.1);
+          padding: 16px 36px;
+          background: rgba(5, 8, 14, 0.85);
+          backdrop-filter: blur(20px);
+          border-bottom: 1px solid var(--border);
         }
-        .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-        .nav-logo-icon { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #0ea5e9, #22c55e); display: flex; align-items: center; justify-content: center; font-size: 18px; }
-        .nav-logo-text { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 17px; color: #f0f9ff; }
-        .nav-links { display: flex; gap: 4px; }
-        .nav-link { text-decoration: none; color: #94a3b8; font-size: 14px; font-weight: 500; padding: 7px 14px; border-radius: 8px; transition: all 0.2s; }
-        .nav-link:hover { color: #e2e8f0; background: rgba(255,255,255,0.06); }
-        .nav-link.active { color: #38bdf8; background: rgba(56,189,248,0.1); }
+        .nav-logo {
+          display: flex; align-items: center; gap: 12px; text-decoration: none;
+        }
+        .nav-logo-icon {
+          width: 42px; height: 42px; border-radius: 12px;
+          background: linear-gradient(135deg, #10b981, #06b6d4);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 22px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+        }
+        .nav-logo-text {
+          font-size: 20px; font-weight: 900; letter-spacing: -0.5px;
+          color: var(--text-white);
+        }
+        .nav-logo-badge {
+          font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+          padding: 2px 7px; border-radius: 6px;
+          background: rgba(16, 185, 129, 0.15); color: var(--mint);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          margin-left: 4px;
+        }
+        .nav-links { display: flex; align-items: center; gap: 8px; }
+        .nav-link {
+          text-decoration: none; color: var(--text-muted); font-size: 14px; font-weight: 600;
+          padding: 8px 16px; border-radius: 10px; transition: all 0.25s ease;
+        }
+        .nav-link:hover { color: var(--text-white); background: rgba(255,255,255,0.06); }
+        .nav-link.active {
+          color: var(--mint); background: rgba(16, 185, 129, 0.12);
+          border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .nav-user-pill {
+          display: flex; align-items: center; gap: 10px;
+          padding: 6px 14px; border-radius: 10px;
+          background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+          font-size: 13px; font-weight: 600; color: var(--text-main);
+        }
+        .nav-user-avatar {
+          width: 26px; height: 26px; border-radius: 50%;
+          background: linear-gradient(135deg, #10b981, #06b6d4);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 11px; font-weight: 800; color: #fff;
+        }
+        .nav-logout-btn {
+          background: transparent; border: none; color: var(--text-sub);
+          font-size: 12px; font-weight: 600; cursor: pointer; transition: color 0.2s;
+        }
+        .nav-logout-btn:hover { color: #ef4444; }
+
         .mobile-toggle {
-          display: none; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-          width: 36px; height: 36px; border-radius: 9px; color: #fff; font-size: 18px;
+          display: none; background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+          width: 40px; height: 40px; border-radius: 10px; color: #fff; font-size: 20px;
           cursor: pointer; align-items: center; justify-content: center;
         }
         .mobile-drawer {
-          display: none;
+          display: none; flex-direction: column; gap: 8px; padding: 20px;
+          background: rgba(8, 14, 25, 0.98); border-bottom: 1px solid var(--border);
+          backdrop-filter: blur(25px);
+        }
+        .mobile-drawer-link {
+          color: var(--text-muted); text-decoration: none; font-size: 15px; font-weight: 600;
+          padding: 12px 16px; border-radius: 10px; transition: all 0.2s;
+          display: flex; align-items: center; gap: 10px;
+        }
+        .mobile-drawer-link.active, .mobile-drawer-link:hover {
+          color: var(--mint); background: rgba(16, 185, 129, 0.12);
+        }
+
+        @media(max-width: 868px) {
+          .navbar { padding: 14px 20px; }
+          .nav-links { display: none; }
+          .mobile-toggle { display: flex; }
+          .mobile-drawer { display: flex; }
+        }
+
+        /* HERO & 3D CANVAS BANNER */
+        .hero-banner-container {
+          position: relative; width: 100%; min-height: 340px;
+          display: flex; align-items: center; justify-content: center;
+          overflow: hidden;
+          background: linear-gradient(180deg, rgba(8, 15, 28, 0.9) 0%, rgba(5, 8, 14, 1) 100%);
+          border-bottom: 1px solid var(--border);
+        }
+        .hero-canvas {
+          position: absolute; inset: 0; width: 100%; height: 100%;
+          pointer-events: none; z-index: 1; opacity: 0.75;
+        }
+        .hero-content {
+          position: relative; z-index: 2; text-align: center;
+          max-width: 860px; padding: 48px 24px 54px;
+        }
+        .hero-badge {
+          display: inline-flex; align-items: center; gap: 8px;
+          padding: 6px 16px; border-radius: 100px;
+          background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3);
+          color: var(--mint); font-size: 13px; font-weight: 700;
+          margin-bottom: 18px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+        .hero-title {
+          font-size: clamp(30px, 4.5vw, 48px); font-weight: 900;
+          line-height: 1.15; letter-spacing: -1.2px; color: var(--text-white);
+          margin-bottom: 14px;
+        }
+        .hero-title span {
+          background: linear-gradient(135deg, #34d399 0%, #06b6d4 100%);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .hero-sub {
+          font-size: clamp(14px, 1.8vw, 17px); color: var(--text-muted);
+          line-height: 1.6; max-width: 700px; margin: 0 auto;
+        }
+
+        /* MAIN CONTAINER */
+        .crop-container {
+          max-width: 1280px; margin: 0 auto; padding: 36px 24px 80px;
+        }
+
+        /* CONTROLS CARD */
+        .controls-card {
+          background: var(--bg-card); border: 1px solid var(--border);
+          border-radius: 18px; padding: 18px 24px; margin-bottom: 36px;
+          display: flex; align-items: center; justify-content: space-between;
+          flex-wrap: wrap; gap: 16px; backdrop-filter: blur(20px);
+        }
+        .search-wrap {
+          position: relative; flex: 1; min-width: 260px;
+        }
+        .search-icon {
+          position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+          font-size: 16px; color: var(--text-sub); pointer-events: none;
+        }
+        .search-input {
+          width: 100%; padding: 11px 16px 11px 40px; border-radius: 12px;
+          background: rgba(8, 14, 25, 0.85); border: 1px solid var(--border);
+          color: var(--text-white); font-family: var(--font-sans); font-size: 14px;
+          outline: none; transition: all 0.2s;
+        }
+        .search-input:focus {
+          border-color: var(--mint);
+          box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+        }
+        .filter-pills {
+          display: flex; gap: 8px; flex-wrap: wrap;
+        }
+        .filter-pill {
+          padding: 8px 16px; border-radius: 10px; font-size: 13px; font-weight: 700;
+          cursor: pointer; border: 1px solid var(--border); background: rgba(255,255,255,0.03);
+          color: var(--text-muted); transition: all 0.2s;
+        }
+        .filter-pill:hover {
+          color: var(--text-white); background: rgba(255,255,255,0.07);
+        }
+        .filter-pill.active {
+          background: rgba(16, 185, 129, 0.15); color: var(--mint);
+          border-color: rgba(16, 185, 129, 0.35); box-shadow: 0 0 14px rgba(16, 185, 129, 0.2);
+        }
+        .count-pill {
+          font-family: var(--font-mono); font-size: 12px; font-weight: 700;
+          padding: 5px 12px; border-radius: 8px; background: rgba(255,255,255,0.05);
+          color: var(--text-sub); border: 1px solid var(--border);
+        }
+
+        /* ALPHABETICAL GROUPS */
+        .alpha-section {
+          margin-bottom: 40px;
+        }
+        .alpha-header {
+          display: flex; align-items: center; gap: 14px; margin-bottom: 18px;
+        }
+        .alpha-badge {
+          width: 38px; height: 38px; border-radius: 10px;
+          background: linear-gradient(135deg, rgba(16,185,129,0.15), rgba(6,182,212,0.15));
+          border: 1px solid rgba(16,185,129,0.3);
+          display: flex; align-items: center; justify-content: center;
+          font-family: var(--font-mono); font-size: 18px; font-weight: 800;
+          color: var(--mint);
+        }
+        .alpha-line {
+          flex: 1; height: 1px; background: var(--border);
+        }
+
+        /* CROP GRID */
+        .crop-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+          gap: 20px;
+        }
+        .crop-card {
+          background: var(--bg-card); border: 1px solid var(--border);
+          border-radius: 18px; overflow: hidden; backdrop-filter: blur(20px);
+          cursor: pointer; transition: transform 0.2s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+        .crop-card:hover {
+          border-color: var(--border-glow);
+          box-shadow: 0 14px 35px rgba(0,0,0,0.45);
+        }
+        .crop-card.selected {
+          border-color: var(--mint);
+          box-shadow: 0 0 24px rgba(16, 185, 129, 0.35);
+        }
+        .crop-photo-wrap {
+          position: relative; height: 155px; background: rgba(8, 14, 25, 0.9);
+          overflow: hidden;
+        }
+        .crop-photo {
+          width: 100%; height: 100%; object-fit: cover;
+          transition: transform 0.4s ease;
+        }
+        .crop-card:hover .crop-photo {
+          transform: scale(1.06);
+        }
+        .crop-no-photo {
+          width: 100%; height: 100%; display: flex; align-items: center;
+          justify-content: center; font-size: 54px;
+        }
+        .crop-type-badge {
+          position: absolute; top: 12px; right: 12px;
+          padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700;
+          letter-spacing: 0.3px; backdrop-filter: blur(10px);
+        }
+        .crop-info {
+          padding: 16px;
+        }
+        .crop-name {
+          font-size: 16px; font-weight: 800; color: var(--text-white);
+          margin-bottom: 4px;
+        }
+        .crop-note {
+          font-size: 12px; color: var(--text-muted); margin-bottom: 12px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .crop-params-grid {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+        }
+        .crop-param-pill {
+          background: rgba(8, 14, 25, 0.7); border: 1px solid rgba(255,255,255,0.04);
+          border-radius: 8px; padding: 6px 8px;
+        }
+        .param-sub {
+          font-size: 9.5px; color: var(--text-sub); font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;
+        }
+        .param-val {
+          font-family: var(--font-mono); font-size: 11.5px; font-weight: 600;
+          color: var(--text-main);
         }
 
         @media(max-width: 768px) {
-          .navbar { padding: 12px 16px; }
-          .nav-links { display: none; }
-          .mobile-toggle { display: flex; }
-          .mobile-drawer {
-            display: flex; flex-direction: column; gap: 6px; padding: 16px;
-            background: rgba(8, 14, 25, 0.98); border-bottom: 1px solid rgba(255,255,255,0.08);
-            backdrop-filter: blur(20px);
-          }
-          .mobile-drawer-link {
-            color: #94a3b8; text-decoration: none; font-size: 14px; font-weight: 500;
-            padding: 9px 12px; border-radius: 8px; transition: all 0.2s;
-          }
-          .mobile-drawer-link:hover, .mobile-drawer-link.active {
-            color: #38bdf8; background: rgba(56,189,248,0.1);
-          }
-          .hero { padding: 40px 16px 28px !important; }
-          .hero-title { font-size: clamp(26px, 6vw, 36px) !important; }
-          .hero-sub { font-size: 13.5px !important; }
-          .main { padding: 20px 14px !important; }
-          .controls { gap: 10px !important; margin-bottom: 20px !important; }
-          .search-wrap { min-width: 100% !important; }
-          .filter-btns { width: 100%; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
-          .filter-btn { white-space: nowrap; padding: 8px 14px; font-size: 12px; }
-          .crop-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 10px !important; }
-          .crop-card { border-radius: 12px; }
-          .crop-photo-wrap { height: 120px !important; }
-          .crop-info { padding: 10px !important; }
-          .crop-name { font-size: 12.5px !important; }
-          .crop-note { font-size: 10px !important; margin-bottom: 6px !important; }
-          .crop-param { padding: 4px 6px !important; }
-          .param-label { font-size: 8px !important; }
-          .param-value { font-size: 9.5px !important; }
-        }
-        @media(max-width: 360px) {
-          .crop-grid { grid-template-columns: 1fr !important; }
+          .crop-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+          .crop-photo-wrap { height: 125px; }
+          .crop-info { padding: 12px; }
         }
 
-        .hero {
-          padding: 60px 32px 48px; text-align: center;
-          background: radial-gradient(ellipse 70% 50% at 50% 0%, rgba(34,197,94,0.06) 0%, transparent 70%);
-          border-bottom: 1px solid rgba(255,255,255,0.04);
+        /* DETAIL SLIDE-OUT PANEL */
+        .overlay {
+          position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+          backdrop-filter: blur(4px); z-index: 199; display: none;
         }
-        .hero-badge { display: inline-flex; align-items: center; gap: 6px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); color: #22c55e; font-size: 12px; font-weight: 500; padding: 5px 16px; border-radius: 100px; margin-bottom: 18px; letter-spacing: 0.5px; }
-        .hero-title { font-family: 'Syne', sans-serif; font-size: clamp(30px, 4vw, 48px); font-weight: 800; letter-spacing: -1px; background: linear-gradient(135deg, #f0f9ff 0%, #86efac 60%, #22c55e 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
-        .hero-sub { font-size: 15px; color: #64748b; max-width: 500px; margin: 0 auto; line-height: 1.7; }
-
-        .main { padding: 32px; max-width: 1300px; margin: 0 auto; }
-
-        /* SEARCH + FILTERS */
-        .controls { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; align-items: center; }
-        .search-wrap { position: relative; flex: 1; min-width: 220px; }
-        .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 15px; color: #475569; pointer-events: none; }
-        .search-input { width: 100%; padding: 12px 16px 12px 42px; background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; color: #e2e8f0; font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none; transition: all 0.2s; }
-        .search-input:focus { border-color: rgba(34,197,94,0.4); box-shadow: 0 0 0 3px rgba(34,197,94,0.06); }
-        .search-input::placeholder { color: #334155; }
-
-        .filter-btns { display: flex; gap: 8px; }
-        .filter-btn { padding: 10px 18px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(15,23,42,0.8); color: #64748b; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s; font-family: 'DM Sans', sans-serif; }
-        .filter-btn:hover { color: #e2e8f0; border-color: rgba(255,255,255,0.15); }
-        .filter-btn.active-all { background: rgba(255,255,255,0.06); color: #e2e8f0; border-color: rgba(255,255,255,0.15); }
-        .filter-btn.active-veg { background: rgba(34,197,94,0.1); color: #22c55e; border-color: rgba(34,197,94,0.3); }
-        .filter-btn.active-fruit { background: rgba(251,146,60,0.1); color: #fb923c; border-color: rgba(251,146,60,0.3); }
-        .filter-btn.active-herb { background: rgba(56,189,248,0.1); color: #38bdf8; border-color: rgba(56,189,248,0.3); }
-
-        .result-count { font-size: 13px; color: #334155; white-space: nowrap; }
-
-        /* ALPHABET GROUP */
-        .alpha-group { margin-bottom: 32px; }
-        .alpha-label { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: #1e293b; margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.04); }
-
-        /* CROP GRID */
-        .crop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
-
-        .crop-card { background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; overflow: hidden; cursor: pointer; transition: all 0.25s; }
-        .crop-card:hover { transform: translateY(-6px); border-color: rgba(255,255,255,0.15); box-shadow: 0 12px 40px rgba(0,0,0,0.3); }
-        .crop-card.selected { border-color: #22c55e; box-shadow: 0 0 0 1px #22c55e; }
-
-        .crop-photo-wrap { position: relative; height: 150px; background: rgba(5,12,26,0.8); overflow: hidden; }
-        .crop-photo { width: 100%; height: 100%; object-fit: cover; transition: transform 0.4s; }
-        .crop-card:hover .crop-photo { transform: scale(1.08); }
-        .crop-no-photo { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 52px; background: linear-gradient(135deg, rgba(15,23,42,1), rgba(30,41,59,1)); }
-        .crop-type-badge { position: absolute; top: 10px; right: 10px; padding: 3px 10px; border-radius: 100px; font-size: 10px; font-weight: 600; letter-spacing: 0.3px; }
-
-        .crop-info { padding: 14px; }
-        .crop-name { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: #f0f9ff; margin-bottom: 4px; }
-        .crop-note { font-size: 11px; color: #475569; margin-bottom: 10px; }
-        .crop-params { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-        .crop-param { background: rgba(5,12,26,0.6); border-radius: 6px; padding: 5px 8px; }
-        .param-label { font-size: 9px; color: #334155; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
-        .param-value { font-size: 11px; color: #94a3b8; font-weight: 500; }
-
-        /* DETAIL PANEL */
-        .detail-panel {
-          position: fixed; right: 0; top: 0; bottom: 0; width: min(380px, 100vw);
-          background: rgba(10,18,35,0.98); border-left: 1px solid rgba(255,255,255,0.08);
-          backdrop-filter: blur(20px); z-index: 200;
-          overflow-y: auto; padding: 24px;
-          transform: translateX(100%); transition: transform 0.3s ease;
-        }
-        .detail-panel.open { transform: translateX(0); }
-        .detail-close { position: absolute; top: 16px; right: 16px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); color: #94a3b8; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; transition: all 0.2s; }
-        .detail-close:hover { background: rgba(255,255,255,0.1); color: #e2e8f0; }
-        .detail-photo { width: 100%; height: 200px; border-radius: 14px; object-fit: cover; margin-bottom: 20px; background: rgba(15,23,42,0.8); }
-        .detail-no-photo { width: 100%; height: 200px; border-radius: 14px; background: rgba(15,23,42,0.8); display: flex; align-items: center; justify-content: center; font-size: 72px; margin-bottom: 20px; }
-        .detail-name { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; color: #f0f9ff; margin-bottom: 4px; }
-        .detail-note { font-size: 13px; color: #475569; margin-bottom: 16px; }
-        .detail-badge { display: inline-flex; padding: 3px 12px; border-radius: 100px; font-size: 11px; font-weight: 600; margin-bottom: 20px; }
-        .detail-section-label { font-size: 10px; font-weight: 600; color: #334155; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
-        .detail-params { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 20px; }
-        .detail-param { background: rgba(5,12,26,0.8); border: 1px solid rgba(255,255,255,0.04); border-radius: 10px; padding: 12px; }
-        .detail-param-icon { font-size: 16px; margin-bottom: 6px; }
-        .detail-param-label { font-size: 10px; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
-        .detail-param-value { font-size: 13px; color: #e2e8f0; font-weight: 600; }
-        .npk-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-        .npk-card { background: rgba(5,12,26,0.8); border: 1px solid rgba(255,255,255,0.04); border-radius: 10px; padding: 10px; text-align: center; }
-        .npk-letter { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; margin-bottom: 2px; }
-        .npk-value { font-size: 12px; color: #64748b; }
-
-        .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 199; display: none; }
         .overlay.open { display: block; }
 
-        .empty { text-align: center; padding: 64px 20px; color: #334155; }
-        .empty-icon { font-size: 48px; margin-bottom: 16px; }
-        .empty-text { font-size: 15px; }
+        .detail-panel {
+          position: fixed; right: 0; top: 0; bottom: 0; width: min(420px, 100vw);
+          background: rgba(10, 16, 28, 0.97); border-left: 1px solid var(--border);
+          backdrop-filter: blur(25px); z-index: 200; overflow-y: auto; padding: 28px;
+          transform: translateX(100%); transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .detail-panel.open { transform: translateX(0); }
+        .detail-close {
+          position: absolute; top: 20px; right: 20px;
+          background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+          color: var(--text-muted); width: 34px; height: 34px; border-radius: 10px;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; font-size: 16px; transition: all 0.2s;
+        }
+        .detail-close:hover {
+          background: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: rgba(239, 68, 68, 0.3);
+        }
+        .detail-photo {
+          width: 100%; height: 210px; border-radius: 16px; object-fit: cover;
+          margin-bottom: 20px; border: 1px solid var(--border);
+        }
+        .detail-name {
+          font-size: 24px; font-weight: 900; color: var(--text-white); margin-bottom: 6px;
+        }
+        .detail-note {
+          font-size: 14px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5;
+        }
+        .detail-badge {
+          display: inline-flex; padding: 4px 12px; border-radius: 100px;
+          font-size: 11px; font-weight: 700; margin-bottom: 24px;
+        }
+        .detail-section-title {
+          font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+          color: var(--mint); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 12px;
+        }
+        .detail-params-list {
+          display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 26px;
+        }
+        .detail-param-item {
+          background: rgba(8, 14, 25, 0.85); border: 1px solid var(--border);
+          border-radius: 12px; padding: 12px;
+        }
+        .detail-param-icon { font-size: 18px; margin-bottom: 6px; }
+        .detail-param-lbl {
+          font-size: 10px; font-weight: 700; color: var(--text-sub); text-transform: uppercase;
+          letter-spacing: 0.6px; margin-bottom: 4px;
+        }
+        .detail-param-val {
+          font-family: var(--font-mono); font-size: 13.5px; font-weight: 700; color: var(--text-white);
+        }
 
-        .footer { text-align: center; padding: 32px; border-top: 1px solid rgba(255,255,255,0.04); font-size: 12px; color: #1e293b; margin-top: 20px; }
+        .npk-grid {
+          display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;
+        }
+        .npk-box {
+          background: rgba(8, 14, 25, 0.85); border: 1px solid var(--border);
+          border-radius: 12px; padding: 12px 8px; text-align: center;
+        }
+        .npk-letter {
+          font-family: var(--font-mono); font-size: 20px; font-weight: 900; margin-bottom: 2px;
+        }
+        .npk-name { font-size: 10px; color: var(--text-sub); text-transform: uppercase; margin-bottom: 4px; }
+        .npk-num {
+          font-family: var(--font-mono); font-size: 14px; font-weight: 800; color: var(--text-white);
+        }
+
+        .empty-state {
+          text-align: center; padding: 70px 20px;
+        }
+        .empty-icon { font-size: 48px; margin-bottom: 14px; }
+        .empty-title { font-size: 18px; font-weight: 800; color: var(--text-white); margin-bottom: 6px; }
+        .empty-desc { font-size: 14px; color: var(--text-muted); }
+
+        /* FOOTER */
+        .footer {
+          text-align: center; padding: 48px 24px;
+          border-top: 1px solid var(--border);
+          background: rgba(5, 8, 14, 0.95);
+        }
+        .footer-logo {
+          display: inline-flex; align-items: center; gap: 8px;
+          font-size: 18px; font-weight: 900; color: var(--text-white); margin-bottom: 10px;
+        }
+        .footer-text {
+          font-size: 13px; color: var(--text-sub); line-height: 1.6;
+        }
       `}</style>
 
       {/* NAVBAR */}
       <nav className="navbar">
         <Link href="/" className="nav-logo">
           <div className="nav-logo-icon">🌱</div>
-          <span className="nav-logo-text">AgroSense</span>
+          <div>
+            <span className="nav-logo-text">SMART FARM</span>
+            <span className="nav-logo-badge">IoT Core</span>
+          </div>
         </Link>
         <div className="nav-links">
           <Link href="/" className="nav-link">Dashboard</Link>
-          <Link href="/about" className="nav-link">About</Link>
           <Link href="/crop" className="nav-link active">Crops</Link>
+          <Link href="/about" className="nav-link">About</Link>
           <Link href="/contact" className="nav-link">Contact</Link>
-          <Link href="/login" className="nav-link">Login</Link>
+          {token && user ? (
+            <div className="nav-user-pill">
+              <div className="nav-user-avatar">{user.name?.charAt(0) || "U"}</div>
+              <span>{user.name?.split(" ")[0]}</span>
+              <button onClick={() => logout()} className="nav-logout-btn">✕</button>
+            </div>
+          ) : (
+            <Link href="/login" className="nav-link" style={{ color: "var(--mint)" }}>Farmer Login ➔</Link>
+          )}
         </div>
         <button
           className="mobile-toggle"
@@ -330,63 +736,84 @@ export default function CropSelection() {
         </button>
       </nav>
 
-      {/* Mobile Drawer */}
+      {/* MOBILE DRAWER */}
       {mobileMenuOpen && (
         <div className="mobile-drawer">
           <Link href="/" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>📊 Dashboard</Link>
-          <Link href="/crop" className="mobile-drawer-link active" onClick={() => setMobileMenuOpen(false)}>🌾 Crops Encyclopedia</Link>
-          <Link href="/about" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>👥 About Team</Link>
-          <Link href="/contact" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>📬 Contact</Link>
-          <Link href="/login" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>🔑 Farmer Login</Link>
+          <Link href="/crop" className="mobile-drawer-link active" onClick={() => setMobileMenuOpen(false)}>🌾 Crop Directory</Link>
+          <Link href="/about" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>👥 About Engineering Team</Link>
+          <Link href="/contact" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>📬 Contact Support</Link>
+          {token ? (
+            <button onClick={() => { logout(); setMobileMenuOpen(false); }} className="mobile-drawer-link" style={{ background: "none", border: "none", width: "100%", textAlign: "left", cursor: "pointer", color: "#ef4444" }}>
+              🚪 Sign Out
+            </button>
+          ) : (
+            <Link href="/login" className="mobile-drawer-link" onClick={() => setMobileMenuOpen(false)}>🔑 Farmer Login</Link>
+          )}
         </div>
       )}
 
-      {/* HERO */}
-      <div className="hero">
-        <div className="hero-badge">🌿 100 Greenhouse Crops</div>
-        <h1 className="hero-title">Crop Selection Guide</h1>
-        <p className="hero-sub">Browse all vegetables, fruits and herbs with their ideal growing parameters for Indian greenhouse farming.</p>
+      {/* 3D HERO BANNER */}
+      <div className="hero-banner-container">
+        <canvas ref={canvasRef} className="hero-canvas" />
+        <div className="hero-content">
+          <div className="hero-badge">🌿 100 Indian Greenhouse & Field Crops</div>
+          <h1 className="hero-title">
+            Crop Cultivation <span>Encyclopedia</span>
+          </h1>
+          <p className="hero-sub">
+            Scientific threshold parameters including ideal root moisture, canopy humidity, ambient temperature,
+            substrate pH, and NPK mineral nutrition ratios calibrated for smart irrigation.
+          </p>
+        </div>
       </div>
 
-      {/* MAIN */}
-      <div className="main">
+      {/* MAIN CONTAINER */}
+      <div className="crop-container">
 
-        {/* CONTROLS */}
-        <div className="controls">
+        {/* CONTROLS CARD */}
+        <div className="controls-card">
           <div className="search-wrap">
             <span className="search-icon">🔍</span>
             <input
               type="text"
               className="search-input"
-              placeholder="Search crops... (e.g. Tomato, Mint)"
+              placeholder="Search 100 crops... (e.g. Tomato, Bell Pepper, Mint)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="filter-btns">
+
+          <div className="filter-pills">
             {(["All", "Vegetable", "Fruit", "Herb"] as const).map((f) => (
               <button
                 key={f}
-                className={`filter-btn ${filter === f ? (f === "All" ? "active-all" : f === "Vegetable" ? "active-veg" : f === "Fruit" ? "active-fruit" : "active-herb") : ""}`}
+                className={`filter-pill ${filter === f ? "active" : ""}`}
                 onClick={() => setFilter(f)}
               >
-                {f === "All" ? "🌱 All" : f === "Vegetable" ? "🥬 Vegetables" : f === "Fruit" ? "🍎 Fruits" : "🌿 Herbs"}
+                {f === "All" ? "🌱 All Crops" : f === "Vegetable" ? "🥬 Vegetables" : f === "Fruit" ? "🍎 Fruits" : "🌿 Herbs"}
               </button>
             ))}
           </div>
-          <div className="result-count">{filtered.length} crops</div>
+
+          <div className="count-pill">{filtered.length} Crops Matching</div>
         </div>
 
         {/* CROP LIST */}
         {filtered.length === 0 ? (
-          <div className="empty">
+          <div className="empty-state">
             <div className="empty-icon">🔍</div>
-            <div className="empty-text">No crops found for &quot;{search}&quot;</div>
+            <div className="empty-title">No Crops Found</div>
+            <div className="empty-desc">No varieties match your query &quot;{search}&quot;. Try clearing filters.</div>
           </div>
         ) : (
           Object.keys(grouped).sort().map((letter) => (
-            <div className="alpha-group" key={letter}>
-              <div className="alpha-label">{letter}</div>
+            <div className="alpha-section" key={letter}>
+              <div className="alpha-header">
+                <div className="alpha-badge">{letter}</div>
+                <div className="alpha-line" />
+              </div>
+
               <div className="crop-grid">
                 {grouped[letter].map((crop) => {
                   const tc = typeColors[crop.type];
@@ -394,6 +821,8 @@ export default function CropSelection() {
                     <div
                       key={crop.name}
                       className={`crop-card ${selected?.name === crop.name ? "selected" : ""}`}
+                      onMouseMove={handleCardTilt}
+                      onMouseLeave={handleCardReset}
                       onClick={() => setSelected(selected?.name === crop.name ? null : crop)}
                     >
                       <div className="crop-photo-wrap">
@@ -410,29 +839,34 @@ export default function CropSelection() {
                         <div className="crop-no-photo" style={{ display: "none" }}>
                           {crop.type === "Vegetable" ? "🥦" : crop.type === "Fruit" ? "🍎" : "🌿"}
                         </div>
-                        <div className="crop-type-badge" style={{ background: tc.bg, color: tc.text, border: `1px solid ${tc.border}` }}>
+                        <div
+                          className="crop-type-badge"
+                          style={{ background: tc.bg, color: tc.text, border: `1px solid ${tc.border}` }}
+                        >
                           {crop.type}
                         </div>
                       </div>
+
                       <div className="crop-info">
                         <div className="crop-name">{crop.name}</div>
                         <div className="crop-note">{crop.notes}</div>
-                        <div className="crop-params">
-                          <div className="crop-param">
-                            <div className="param-label">🌡 Temp</div>
-                            <div className="param-value">{crop.temp}</div>
+
+                        <div className="crop-params-grid">
+                          <div className="crop-param-pill">
+                            <div className="param-sub">🌡️ Temp</div>
+                            <div className="param-val">{crop.temp}</div>
                           </div>
-                          <div className="crop-param">
-                            <div className="param-label">🧪 pH</div>
-                            <div className="param-value">{crop.ph}</div>
+                          <div className="crop-param-pill">
+                            <div className="param-sub">🧪 pH</div>
+                            <div className="param-val">{crop.ph}</div>
                           </div>
-                          <div className="crop-param">
-                            <div className="param-label">💧 Moisture</div>
-                            <div className="param-value">{crop.moisture}</div>
+                          <div className="crop-param-pill">
+                            <div className="param-sub">🌱 Moisture</div>
+                            <div className="param-val">{crop.moisture}</div>
                           </div>
-                          <div className="crop-param">
-                            <div className="param-label">💧 Humidity</div>
-                            <div className="param-value">{crop.humidity}</div>
+                          <div className="crop-param-pill">
+                            <div className="param-sub">💧 Humidity</div>
+                            <div className="param-val">{crop.humidity}</div>
                           </div>
                         </div>
                       </div>
@@ -443,9 +877,10 @@ export default function CropSelection() {
             </div>
           ))
         )}
+
       </div>
 
-      {/* DETAIL PANEL */}
+      {/* DETAIL SLIDE-OUT PANEL */}
       <div className={`overlay ${selected ? "open" : ""}`} onClick={() => setSelected(null)} />
       <div className={`detail-panel ${selected ? "open" : ""}`}>
         {selected && (() => {
@@ -463,48 +898,45 @@ export default function CropSelection() {
                   if (p) p.style.display = "flex";
                 }}
               />
-              <div className="detail-no-photo" style={{ display: "none" }}>
-                {selected.type === "Vegetable" ? "🥦" : selected.type === "Fruit" ? "🍎" : "🌿"}
-              </div>
               <div className="detail-name">{selected.name}</div>
               <div className="detail-note">{selected.notes}</div>
               <div className="detail-badge" style={{ background: tc.bg, color: tc.text, border: `1px solid ${tc.border}` }}>
                 {selected.type}
               </div>
 
-              <div className="detail-section-label">Growing Parameters</div>
-              <div className="detail-params">
+              <div className="detail-section-title">Ideal Growing Conditions</div>
+              <div className="detail-params-list">
                 {[
                   { icon: "🌡️", label: "Temperature", value: selected.temp },
-                  { icon: "💧", label: "Humidity", value: selected.humidity },
+                  { icon: "💧", label: "Air Humidity", value: selected.humidity },
                   { icon: "🌱", label: "Soil Moisture", value: selected.moisture },
-                  { icon: "🧪", label: "pH Level", value: selected.ph },
-                  { icon: "⚡", label: "EC (dS/m)", value: selected.ec },
+                  { icon: "🧪", label: "Substrate pH", value: selected.ph },
+                  { icon: "⚡", label: "Electrical Cond.", value: selected.ec },
                 ].map((p) => (
-                  <div key={p.label} className="detail-param">
+                  <div key={p.label} className="detail-param-item">
                     <div className="detail-param-icon">{p.icon}</div>
-                    <div className="detail-param-label">{p.label}</div>
-                    <div className="detail-param-value">{p.value}</div>
+                    <div className="detail-param-lbl">{p.label}</div>
+                    <div className="detail-param-val">{p.value}</div>
                   </div>
                 ))}
               </div>
 
-              <div className="detail-section-label">NPK Values (mg/kg)</div>
-              <div className="npk-row">
-                <div className="npk-card">
+              <div className="detail-section-title">NPK Mineral Nutrition (mg/kg)</div>
+              <div className="npk-grid">
+                <div className="npk-box">
                   <div className="npk-letter" style={{ color: "#38bdf8" }}>N</div>
-                  <div className="npk-value">Nitrogen</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0", marginTop: 4 }}>{selected.nitrogen}</div>
+                  <div className="npk-name">Nitrogen</div>
+                  <div className="npk-num">{selected.nitrogen}</div>
                 </div>
-                <div className="npk-card">
+                <div className="npk-box">
                   <div className="npk-letter" style={{ color: "#f59e0b" }}>P</div>
-                  <div className="npk-value">Phosphorus</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0", marginTop: 4 }}>{selected.phosphorus}</div>
+                  <div className="npk-name">Phosphorus</div>
+                  <div className="npk-num">{selected.phosphorus}</div>
                 </div>
-                <div className="npk-card">
+                <div className="npk-box">
                   <div className="npk-letter" style={{ color: "#a78bfa" }}>K</div>
-                  <div className="npk-value">Potassium</div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#e2e8f0", marginTop: 4 }}>{selected.potassium}</div>
+                  <div className="npk-name">Potassium</div>
+                  <div className="npk-num">{selected.potassium}</div>
                 </div>
               </div>
             </>
@@ -512,9 +944,16 @@ export default function CropSelection() {
         })()}
       </div>
 
-      <div className="footer">
-        AgroSense · Crop Selection Guide · 100 Greenhouse Crops · India 🇮🇳
-      </div>
+      {/* FOOTER */}
+      <footer className="footer">
+        <div className="footer-logo">
+          <span>🌱</span> SMART FARM
+        </div>
+        <div className="footer-text">
+          Intelligent IoT-Based Smart Irrigation & Crop Monitoring System<br />
+          Crop Encyclopedia & Telemetry Calibration · India 🇮🇳
+        </div>
+      </footer>
     </>
   );
 }

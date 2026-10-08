@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/auth-context";
 
@@ -21,6 +21,8 @@ export default function Login() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState("");
   const [resetSuccess, setResetSuccess] = useState("");
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,249 +69,365 @@ export default function Login() {
     }
   };
 
+  // 3D Canvas Mesh Engine for Login Left Panel
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+    let width = (canvas.width = canvas.parentElement?.clientWidth || 500);
+    let height = (canvas.height = canvas.parentElement?.clientHeight || 800);
+
+    const handleResize = () => {
+      if (!canvas.parentElement) return;
+      width = canvas.width = canvas.parentElement.clientWidth;
+      height = canvas.height = canvas.parentElement.clientHeight;
+    };
+    window.addEventListener("resize", handleResize);
+
+    const nodes: { x: number; y: number; vx: number; vy: number; radius: number }[] = [];
+    const count = 35;
+    for (let i = 0; i < count; i++) {
+      nodes.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: (Math.random() - 0.5) * 0.8,
+        vy: (Math.random() - 0.5) * 0.8,
+        radius: Math.random() * 2.5 + 1.5,
+      });
+    }
+
+    const render = () => {
+      ctx.clearRect(0, 0, width, height);
+
+      for (let i = 0; i < count; i++) {
+        const n1 = nodes[i];
+        n1.x += n1.vx;
+        n1.y += n1.vy;
+
+        if (n1.x < 0 || n1.x > width) n1.vx *= -1;
+        if (n1.y < 0 || n1.y > height) n1.vy *= -1;
+
+        ctx.fillStyle = "rgba(52, 211, 153, 0.7)";
+        ctx.beginPath();
+        ctx.arc(n1.x, n1.y, n1.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (let j = i + 1; j < count; j++) {
+          const n2 = nodes[j];
+          const dx = n1.x - n2.x;
+          const dy = n1.y - n2.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist < 120) {
+            ctx.strokeStyle = `rgba(6, 182, 212, ${(1 - dist / 120) * 0.35})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(n1.x, n1.y);
+            ctx.lineTo(n2.x, n2.y);
+            ctx.stroke();
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
+  // 3D Card Hover Perspective Handler
+  const handleCardTilt = (e: React.MouseEvent<HTMLElement>) => {
+    if (typeof window !== "undefined" && (window.innerWidth < 768 || !window.matchMedia("(hover: hover)").matches)) return;
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+    const rx = ((y - cy) / cy) * -6;
+    const ry = ((x - cx) / cx) * 6;
+    el.style.transform = `perspective(800px) rotateX(${rx.toFixed(2)}deg) rotateY(${ry.toFixed(2)}deg) translateY(-3px)`;
+  };
+
+  const handleCardReset = (e: React.MouseEvent<HTMLElement>) => {
+    e.currentTarget.style.transform = "perspective(800px) rotateX(0deg) rotateY(0deg) translateY(0px)";
+  };
+
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #050c1a; font-family: 'DM Sans', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap');
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+          --bg-dark: #05080e;
+          --bg-panel: rgba(12, 18, 30, 0.85);
+          --bg-card: rgba(16, 25, 42, 0.75);
+          --border: rgba(255, 255, 255, 0.08);
+          --border-glow: rgba(16, 185, 129, 0.4);
+          --primary-emerald: #10b981;
+          --mint: #34d399;
+          --cyan: #06b6d4;
+          --amber: #f59e0b;
+          --text-white: #ffffff;
+          --text-main: #f1f5f9;
+          --text-muted: #94a3b8;
+          --text-sub: #64748b;
+          --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+          --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+          background-color: var(--bg-dark);
+          color: var(--text-main);
+          font-family: var(--font-sans);
+          min-height: 100vh;
+        }
 
         .login-page {
           min-height: 100vh;
           display: grid;
-          grid-template-columns: 1fr 1fr;
-          background: #050c1a;
+          grid-template-columns: 1.1fr 1fr;
+          background: var(--bg-dark);
         }
-        @media(max-width: 768px) {
+
+        @media(max-width: 900px) {
           .login-page { grid-template-columns: 1fr; }
           .login-left { display: none; }
         }
 
         /* LEFT PANEL */
         .login-left {
-          background: radial-gradient(ellipse 80% 80% at 30% 50%, rgba(56,189,248,0.08) 0%, transparent 70%),
-                      radial-gradient(ellipse 60% 60% at 80% 20%, rgba(34,197,94,0.05) 0%, transparent 60%);
-          border-right: 1px solid rgba(255,255,255,0.04);
+          position: relative;
+          background: linear-gradient(135deg, rgba(8, 15, 28, 0.95) 0%, rgba(5, 8, 14, 1) 100%);
+          border-right: 1px solid var(--border);
           display: flex; flex-direction: column;
           justify-content: center; align-items: flex-start;
-          padding: 64px;
-          position: relative; overflow: hidden;
+          padding: 64px 54px;
+          overflow: hidden;
         }
-        .left-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 64px; }
+        .login-canvas {
+          position: absolute; inset: 0; width: 100%; height: 100%;
+          pointer-events: none; z-index: 1; opacity: 0.65;
+        }
+        .left-content {
+          position: relative; z-index: 2; max-width: 520px;
+        }
+        .left-logo {
+          display: flex; align-items: center; gap: 12px; margin-bottom: 48px;
+          text-decoration: none;
+        }
         .left-logo-icon {
           width: 44px; height: 44px; border-radius: 12px;
-          background: linear-gradient(135deg, #0ea5e9, #22c55e);
+          background: linear-gradient(135deg, #10b981, #06b6d4);
           display: flex; align-items: center; justify-content: center;
-          font-size: 22px;
+          font-size: 24px; box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
         }
         .left-logo-text {
-          font-family: 'Syne', sans-serif; font-weight: 700;
-          font-size: 20px; color: #f0f9ff;
+          font-size: 22px; font-weight: 900; letter-spacing: -0.5px;
+          color: var(--text-white);
         }
-        .left-title {
-          font-family: 'Syne', sans-serif; font-size: 42px;
-          font-weight: 800; line-height: 1.15; letter-spacing: -1px;
-          background: linear-gradient(135deg, #f0f9ff 0%, #7dd3fc 50%, #22c55e 100%);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        .left-logo-badge {
+          font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+          padding: 2px 7px; border-radius: 6px;
+          background: rgba(16, 185, 129, 0.15); color: var(--mint);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          margin-left: 6px;
+        }
+
+        .left-tag {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 5px 14px; border-radius: 100px;
+          background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3);
+          color: var(--mint); font-size: 12px; font-weight: 700;
           margin-bottom: 20px;
         }
+        .left-title {
+          font-size: clamp(34px, 4vw, 46px); font-weight: 900;
+          line-height: 1.15; letter-spacing: -1.2px; color: var(--text-white);
+          margin-bottom: 18px;
+        }
+        .left-title span {
+          background: linear-gradient(135deg, #34d399 0%, #06b6d4 100%);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
         .left-sub {
-          font-size: 15px; color: #475569; line-height: 1.8;
-          max-width: 380px; margin-bottom: 48px;
+          font-size: 15.5px; color: var(--text-muted); line-height: 1.6;
+          margin-bottom: 36px;
         }
-        .left-features { display: flex; flex-direction: column; gap: 16px; }
-        .left-feature {
-          display: flex; align-items: center; gap: 12px;
-          font-size: 14px; color: #64748b;
+
+        .left-features {
+          display: flex; flex-direction: column; gap: 12px; width: 100%;
         }
-        .feature-dot {
-          width: 8px; height: 8px; border-radius: 50%;
-          background: linear-gradient(135deg, #38bdf8, #22c55e);
-          flex-shrink: 0;
+        .left-feature-card {
+          display: flex; align-items: center; gap: 14px;
+          padding: 14px 18px; border-radius: 14px;
+          background: var(--bg-card); border: 1px solid var(--border);
+          backdrop-filter: blur(15px); transition: transform 0.2s ease, border-color 0.2s ease;
         }
-        .left-glow {
-          position: absolute; bottom: -100px; right: -100px;
-          width: 400px; height: 400px; border-radius: 50%;
-          background: radial-gradient(circle, rgba(56,189,248,0.04) 0%, transparent 70%);
-          pointer-events: none;
+        .left-feature-card:hover {
+          border-color: var(--border-glow);
+        }
+        .left-feat-icon {
+          width: 36px; height: 36px; border-radius: 10px;
+          background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.25);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 18px; flex-shrink: 0;
+        }
+        .left-feat-text {
+          font-size: 13.5px; font-weight: 600; color: var(--text-main);
         }
 
         /* RIGHT PANEL */
         .login-right {
           display: flex; flex-direction: column;
-          justify-content: center; align-items: center;
+          align-items: center; justify-content: center;
           padding: 48px 32px;
-          background: #050c1a;
-        }
-        @media(max-width: 480px) {
-          .login-right { padding: 32px 18px; }
-          .login-title { font-size: 25px; }
-          .modal-card { padding: 22px 16px; border-radius: 16px; }
+          background-image:
+            radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.08), transparent 50%),
+            radial-gradient(circle at 20% 80%, rgba(6, 182, 212, 0.06), transparent 50%);
         }
         .login-box {
-          width: 100%; max-width: 420px;
+          width: 100%; max-width: 440px;
         }
-        .login-header { margin-bottom: 36px; }
+        .back-home {
+          display: inline-flex; align-items: center; gap: 6px;
+          color: var(--text-sub); text-decoration: none; font-size: 13px; font-weight: 600;
+          margin-bottom: 32px; transition: color 0.2s;
+        }
+        .back-home:hover { color: var(--mint); }
+
+        .login-card {
+          background: var(--bg-card); border: 1px solid var(--border);
+          border-radius: 22px; padding: 36px 32px; backdrop-filter: blur(25px);
+          box-shadow: 0 16px 40px rgba(0,0,0,0.4);
+        }
+        .login-header {
+          margin-bottom: 28px;
+        }
         .login-tag {
-          font-size: 11px; font-weight: 600; letter-spacing: 2px;
-          text-transform: uppercase; color: #38bdf8; margin-bottom: 10px;
+          font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+          color: var(--mint); text-transform: uppercase; letter-spacing: 1.5px;
+          margin-bottom: 8px;
         }
         .login-title {
-          font-family: 'Syne', sans-serif; font-size: 30px;
-          font-weight: 800; color: #f0f9ff; letter-spacing: -0.5px;
-          margin-bottom: 8px;
+          font-size: 26px; font-weight: 900; letter-spacing: -0.6px;
+          color: var(--text-white); margin-bottom: 8px;
         }
-        .login-sub { font-size: 14px; color: #475569; }
+        .login-sub {
+          font-size: 14px; color: var(--text-muted); line-height: 1.5;
+        }
 
-        /* FORM */
-        .form-group { margin-bottom: 18px; }
+        .form-error {
+          background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3);
+          color: #fca5a5; padding: 12px 14px; border-radius: 12px;
+          font-size: 13px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;
+        }
+        .form-success {
+          background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.3);
+          color: var(--mint); padding: 12px 14px; border-radius: 12px;
+          font-size: 13px; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;
+        }
+
+        .form-group {
+          margin-bottom: 20px;
+        }
         .form-label {
-          display: block; font-size: 12px; font-weight: 600;
-          color: #64748b; letter-spacing: 0.5px; text-transform: uppercase;
+          display: block; font-size: 11.5px; font-weight: 700;
+          text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-main);
           margin-bottom: 8px;
         }
-        .form-input-wrap { position: relative; }
+        .form-input-wrap {
+          position: relative; width: 100%;
+        }
         .form-input {
-          width: 100%; padding: 14px 16px;
-          background: rgba(15,23,42,0.8);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 12px; color: #e2e8f0;
-          font-size: 14px; font-family: 'DM Sans', sans-serif;
+          width: 100%; padding: 13px 16px; border-radius: 12px;
+          background: rgba(8, 14, 25, 0.85); border: 1px solid var(--border);
+          color: var(--text-white); font-family: var(--font-sans); font-size: 14px;
           outline: none; transition: all 0.2s;
         }
         .form-input:focus {
-          border-color: rgba(56,189,248,0.4);
-          background: rgba(15,23,42,1);
-          box-shadow: 0 0 0 3px rgba(56,189,248,0.06);
+          border-color: var(--mint);
+          box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+          background: rgba(10, 18, 32, 0.95);
         }
-        .form-input::placeholder { color: #334155; }
-        .form-input.has-icon { padding-right: 48px; }
-
+        .form-input.has-icon {
+          padding-right: 46px;
+        }
         .input-icon {
-          position: absolute; right: 14px; top: 50%;
-          transform: translateY(-50%);
-          color: #475569; cursor: pointer; font-size: 16px;
-          background: none; border: none; padding: 0;
-          transition: color 0.2s;
+          position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+          background: none; border: none; font-size: 16px; cursor: pointer;
+          color: var(--text-sub); padding: 4px; border-radius: 6px;
         }
-        .input-icon:hover { color: #94a3b8; }
-
-        .form-error {
-          background: rgba(239,68,68,0.08);
-          border: 1px solid rgba(239,68,68,0.2);
-          color: #fca5a5; font-size: 13px;
-          padding: 10px 14px; border-radius: 10px;
-          margin-bottom: 18px;
-        }
-        .form-success {
-          background: rgba(34,197,94,0.1);
-          border: 1px solid rgba(34,197,94,0.3);
-          color: #86efac; font-size: 13px;
-          padding: 12px 14px; border-radius: 10px;
-          margin-bottom: 18px;
-        }
+        .input-icon:hover { color: var(--text-main); }
 
         .forgot-link-btn {
-          display: block; margin-left: auto;
-          font-size: 12px; color: #38bdf8;
-          background: none; border: none; cursor: pointer;
-          margin-top: 8px; font-family: 'DM Sans', sans-serif;
+          background: none; border: none; color: var(--text-sub); font-size: 12px;
+          font-weight: 600; cursor: pointer; margin-top: 8px; display: inline-block;
           transition: color 0.2s;
         }
-        .forgot-link-btn:hover { color: #7dd3fc; text-decoration: underline; }
+        .forgot-link-btn:hover { color: var(--mint); text-decoration: underline; }
 
         .login-btn {
-          width: 100%; padding: 14px;
-          background: linear-gradient(135deg, #0ea5e9, #0284c7);
-          border: none; border-radius: 12px;
-          color: white; font-size: 15px; font-weight: 600;
-          font-family: 'DM Sans', sans-serif;
-          cursor: pointer; transition: all 0.2s;
-          margin-top: 8px;
-          box-shadow: 0 4px 20px rgba(14,165,233,0.25);
+          width: 100%; padding: 14px 20px; border-radius: 12px;
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          border: none; color: #fff; font-size: 15px; font-weight: 800;
+          cursor: pointer; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
           display: flex; align-items: center; justify-content: center; gap: 8px;
+          margin-top: 10px;
         }
         .login-btn:hover:not(:disabled) {
-          transform: translateY(-1px);
-          box-shadow: 0 6px 28px rgba(14,165,233,0.35);
+          transform: translateY(-2px);
+          box-shadow: 0 12px 28px rgba(16, 185, 129, 0.45);
         }
-        .login-btn:disabled { opacity: 0.7; cursor: not-allowed; }
-
-        .spinner {
-          width: 16px; height: 16px; border-radius: 50%;
-          border: 2px solid rgba(255,255,255,0.3);
-          border-top-color: white;
-          animation: spin 0.8s linear infinite;
+        .login-btn:disabled {
+          opacity: 0.6; cursor: not-allowed;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
 
         .register-box {
-          text-align: center; margin-top: 28px;
-          padding: 20px;
-          background: rgba(15,23,42,0.5);
-          border: 1px solid rgba(255,255,255,0.04);
-          border-radius: 12px;
+          margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border);
+          text-align: center;
         }
-        .register-text { font-size: 14px; color: #475569; margin-bottom: 12px; }
+        .register-text {
+          font-size: 13px; color: var(--text-sub); margin-bottom: 8px;
+        }
         .register-btn {
-          display: inline-flex; align-items: center; gap: 6px;
-          padding: 10px 24px; border-radius: 10px;
-          border: 1px solid rgba(56,189,248,0.2);
-          background: rgba(56,189,248,0.06);
-          color: #38bdf8; font-size: 14px; font-weight: 600;
+          color: var(--mint); font-size: 13.5px; font-weight: 700;
           text-decoration: none; transition: all 0.2s;
-          font-family: 'DM Sans', sans-serif;
         }
-        .register-btn:hover {
-          background: rgba(56,189,248,0.12);
-          border-color: rgba(56,189,248,0.4);
-          transform: translateY(-1px);
-        }
+        .register-btn:hover { text-decoration: underline; }
 
-        .back-home {
-          display: flex; align-items: center; gap: 6px;
-          color: #334155; font-size: 13px; text-decoration: none;
-          margin-bottom: 32px; transition: color 0.2s;
-        }
-        .back-home:hover { color: #64748b; }
-
-        /* MODAL STYLES */
+        /* MODAL */
         .modal-backdrop {
-          position: fixed; inset: 0;
-          background: rgba(3, 7, 18, 0.85);
-          backdrop-filter: blur(12px);
+          position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7);
+          backdrop-filter: blur(6px); z-index: 999;
           display: flex; align-items: center; justify-content: center;
-          padding: 20px; z-index: 9999;
-          animation: fadeIn 0.2s ease-out;
+          padding: 20px;
         }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
         .modal-card {
-          background: #0b1329;
-          border: 1px solid rgba(56, 189, 248, 0.25);
-          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), 0 0 35px rgba(56, 189, 248, 0.12);
-          border-radius: 20px;
-          max-width: 440px; width: 100%;
-          padding: 32px; position: relative;
-          animation: slideUp 0.25s ease-out;
+          background: rgba(12, 18, 30, 0.96); border: 1px solid var(--border);
+          border-radius: 22px; padding: 36px 32px; width: 100%; max-width: 440px;
+          position: relative; box-shadow: 0 20px 50px rgba(0,0,0,0.6);
         }
-        @keyframes slideUp {
-          from { transform: translateY(15px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-
         .modal-close-btn {
-          position: absolute; top: 20px; right: 20px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          color: #94a3b8; width: 32px; height: 32px;
-          border-radius: 8px; display: flex; align-items: center;
-          justify-content: center; font-size: 16px; cursor: pointer;
-          transition: all 0.2s;
+          position: absolute; top: 18px; right: 18px;
+          background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+          color: var(--text-muted); width: 32px; height: 32px; border-radius: 8px;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer; font-size: 14px; transition: all 0.2s;
         }
         .modal-close-btn:hover {
-          background: rgba(255, 255, 255, 0.15);
-          color: #f8fafc;
+          background: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: rgba(239, 68, 68, 0.3);
         }
       `}</style>
 
@@ -317,29 +435,45 @@ export default function Login() {
 
         {/* LEFT PANEL */}
         <div className="login-left">
-          <div className="left-logo">
-            <div className="left-logo-icon">🌱</div>
-            <span className="left-logo-text">AgroSense</span>
-          </div>
-          <h1 className="left-title">Smart Farming<br />Starts Here</h1>
-          <p className="left-sub">
-            Monitor your greenhouse in real-time, detect plant diseases with AI,
-            and automate irrigation — all from one dashboard.
-          </p>
-          <div className="left-features">
-            {[
-              "Real-time sensor monitoring (Temp, Humidity, NPK)",
-              "AI-powered plant disease detection via Gemini",
-              "Automated irrigation based on soil moisture",
-              "100+ greenhouse crops database",
-            ].map((f, i) => (
-              <div className="left-feature" key={i}>
-                <div className="feature-dot"></div>
-                {f}
+          <canvas ref={canvasRef} className="login-canvas" />
+
+          <div className="left-content">
+            <Link href="/" className="left-logo">
+              <div className="left-logo-icon">🌱</div>
+              <div>
+                <span className="left-logo-text">SMART FARM</span>
+                <span className="left-logo-badge">IoT Core</span>
               </div>
-            ))}
+            </Link>
+
+            <div className="left-tag">⚡ Precision Agriculture Ecosystem</div>
+            <h1 className="left-title">
+              Intelligent Farming<br />Starts with <span>SMART FARM</span>
+            </h1>
+            <p className="left-sub">
+              Access real-time telemetry from your soil probes, command 6-channel irrigation actuators,
+              and run leaf pathology diagnostics powered by Google Gemini AI.
+            </p>
+
+            <div className="left-features">
+              {[
+                { icon: "📡", title: "Real-time Telemetry Probing (Temp, Humidity, NPK)" },
+                { icon: "🤖", title: "Gemini 2.5 Flash Leaf Disease Vision" },
+                { icon: "💧", title: "Automated 6-Channel Drip Actuation" },
+                { icon: "🌾", title: "100 Indian Crops Agronomic Thresholds" },
+              ].map((feat, i) => (
+                <div
+                  key={i}
+                  className="left-feature-card"
+                  onMouseMove={handleCardTilt}
+                  onMouseLeave={handleCardReset}
+                >
+                  <div className="left-feat-icon">{feat.icon}</div>
+                  <div className="left-feat-text">{feat.title}</div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="left-glow"></div>
         </div>
 
         {/* RIGHT PANEL */}
@@ -347,91 +481,89 @@ export default function Login() {
           <div className="login-box">
 
             <Link href="/" className="back-home">
-              ← Back to Dashboard
+              ← Return to Dashboard
             </Link>
 
-            <div className="login-header">
-              <div className="login-tag">Welcome back</div>
-              <h2 className="login-title">Sign in to AgroSense</h2>
-              <p className="login-sub">Enter your credentials to access your farm dashboard</p>
-            </div>
-
-            <form onSubmit={handleLogin}>
-              {error && <div className="form-error">⚠️ {error}</div>}
-
-              <div className="form-group">
-                <label className="form-label">Email Address</label>
-                <div className="form-input-wrap">
-                  <input
-                    type="email"
-                    className="form-input"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
+            <div className="login-card">
+              <div className="login-header">
+                <div className="login-tag">Farmer Authentication</div>
+                <h2 className="login-title">Sign in to SMART FARM</h2>
+                <p className="login-sub">Enter your credentials to securely manage your field devices</p>
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Password</label>
-                <div className="form-input-wrap">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    className="form-input has-icon"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
+              <form onSubmit={handleLogin}>
+                {error && <div className="form-error">⚠️ {error}</div>}
+
+                <div className="form-group">
+                  <label className="form-label">Email Address</label>
+                  <div className="form-input-wrap">
+                    <input
+                      type="email"
+                      className="form-input"
+                      placeholder="divyanshukumawat9170@gmail.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Password</label>
+                  <div className="form-input-wrap">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      className="form-input has-icon"
+                      placeholder="Enter password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="input-icon"
+                      onClick={() => setShowPassword(!showPassword)}
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? "🙈" : "👁️"}
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    className="input-icon"
-                    onClick={() => setShowPassword(!showPassword)}
-                    title={showPassword ? "Hide password" : "Show password"}
+                    className="forgot-link-btn"
+                    onClick={() => {
+                      setResetEmail(email);
+                      setNewPassword("");
+                      setConfirmPassword("");
+                      setResetError("");
+                      setResetSuccess("");
+                      setShowResetModal(true);
+                    }}
                   >
-                    {showPassword ? "🙈" : "👁️"}
+                    Forgot password?
                   </button>
                 </div>
+
                 <button
-                  type="button"
-                  className="forgot-link-btn"
-                  onClick={() => {
-                    setResetEmail(email);
-                    setNewPassword("");
-                    setConfirmPassword("");
-                    setResetError("");
-                    setResetSuccess("");
-                    setShowResetModal(true);
-                  }}
+                  type="submit"
+                  className="login-btn"
+                  disabled={loading}
                 >
-                  Forgot password?
+                  {loading ? "Authenticating..." : "Sign in to Dashboard ➔"}
                 </button>
+              </form>
+
+              <div className="register-box">
+                <div className="register-text">New to SMART FARM?</div>
+                <Link href="/register" className="register-btn">
+                  Create a new farm account ➔
+                </Link>
               </div>
-
-              <button
-                type="submit"
-                className="login-btn"
-                disabled={loading}
-              >
-                {loading ? (
-                  <><div className="spinner"></div> Signing in...</>
-                ) : (
-                  "Sign In →"
-                )}
-              </button>
-            </form>
-
-            {/* REGISTER LINK */}
-            <div className="register-box">
-              <div className="register-text">Do not have an account yet?</div>
-              <Link href="/register" className="register-btn">
-                Create new account →
-              </Link>
             </div>
 
           </div>
         </div>
+
       </div>
 
       {/* FORGOT PASSWORD MODAL */}
@@ -447,12 +579,12 @@ export default function Login() {
             </button>
 
             <div style={{ marginBottom: 24 }}>
-              <div className="login-tag">Account Recovery</div>
-              <h3 style={{ fontFamily: "Syne, sans-serif", fontSize: 22, fontWeight: 700, color: "#f0f9ff", marginBottom: 6 }}>
-                Reset Your Password
+              <div className="login-tag">Security & Recovery</div>
+              <h3 style={{ fontSize: 22, fontWeight: 900, color: "#fff", marginBottom: 6, letterSpacing: -0.4 }}>
+                Reset Farm Password
               </h3>
-              <p style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>
-                Enter your registered farm account email and choose a new password.
+              <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+                Enter your registered farm email and choose your new password.
               </p>
             </div>
 
@@ -466,7 +598,7 @@ export default function Login() {
                   <input
                     type="email"
                     className="form-input"
-                    placeholder="you@example.com"
+                    placeholder="divyanshukumawat9170@gmail.com"
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
                     required
@@ -514,11 +646,7 @@ export default function Login() {
                 className="login-btn"
                 disabled={resetLoading || !!resetSuccess}
               >
-                {resetLoading ? (
-                  <><div className="spinner"></div> Updating Password...</>
-                ) : (
-                  "Reset Password & Sign In →"
-                )}
+                {resetLoading ? "Updating Password..." : "Update Password & Sign In ➔"}
               </button>
             </form>
           </div>
