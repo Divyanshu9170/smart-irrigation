@@ -103,11 +103,19 @@ export class DevicesController {
     return this.devicesService.getActiveCrop();
   }
 
-  // 🌾 Set active crop profile (Tomato, Wheat, Potato, etc.)
+  // 🌾 Set active crop profile (Tomato, Wheat, Potato, or any of 100+ crops)
   @Post('active-crop')
-  setActiveCrop(@Body() body: { cropId?: number; cropName?: string; deviceId?: string }) {
+  setActiveCrop(
+    @Body()
+    body: {
+      cropId?: number;
+      cropName?: string;
+      deviceId?: string;
+      thresholds?: any;
+    },
+  ) {
     const target = body?.cropId || body?.cropName || 'Tomato';
-    return this.devicesService.setActiveCrop(target, body?.deviceId);
+    return this.devicesService.setActiveCrop(target, body?.deviceId, body?.thresholds);
   }
 
   // ⚙️ Set system operational mode (AUTO vs MANUAL)

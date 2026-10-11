@@ -358,12 +358,43 @@ export default function Home() {
 
   // 🌾 Sync Active Crop Profile & Operational Mode from Backend
   const loadActiveCrop = async () => {
+    if (typeof window !== "undefined") {
+      const savedData = localStorage.getItem("smartfarm_active_crop_data");
+      if (savedData) {
+        try {
+          const parsed = JSON.parse(savedData);
+          const extractNum = (str: any, fallback: number) => {
+            const m = String(str).match(/(\d+)/);
+            return m ? Number(m[1]) : fallback;
+          };
+          setActiveCrop((prev) => ({
+            name: parsed.name,
+            minMoisture: extractNum(parsed.moisture, prev?.minMoisture ?? 60),
+            maxMoisture: 80,
+            minNitrogen: extractNum(parsed.nitrogen, prev?.minNitrogen ?? 120),
+            maxNitrogen: 160,
+            minPhosphorus: extractNum(parsed.phosphorus, prev?.minPhosphorus ?? 80),
+            maxPhosphorus: 120,
+            minPotassium: extractNum(parsed.potassium, prev?.minPotassium ?? 150),
+            maxPotassium: 220,
+            minTemp: extractNum(parsed.temp, prev?.minTemp ?? 18),
+            maxTemp: 28,
+            minPh: 6.0,
+            maxPh: 6.8,
+          }));
+        } catch (e) {}
+      }
+    }
+
     try {
       const res = await fetch(`${API_BASE_URL}/devices/active-crop`);
       if (res.ok) {
         const d = await res.json();
         if (d?.crop) {
           setActiveCrop(d.crop);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("smartfarm_active_crop_name", d.crop.name);
+          }
         }
         if (d?.mode) {
           setSystemMode(d.mode as "AUTO" | "MANUAL");
@@ -376,8 +407,15 @@ export default function Home() {
 
   useEffect(() => {
     loadActiveCrop();
-    const interval = setInterval(loadActiveCrop, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadActiveCrop, 5000);
+    const onFocus = () => loadActiveCrop();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("storage", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("storage", onFocus);
+    };
   }, []);
 
   const handleSwitchCrop = async (cropName: string) => {

@@ -278,18 +278,78 @@ export class DevicesService {
     };
   }
 
-  // 🌾 SET ACTIVE CROP PROFILE FOR FARM
-  async setActiveCrop(cropIdOrName: number | string, deviceId: string = 'ESP32-0001') {
+  // 🌾 SET ACTIVE CROP PROFILE FOR FARM (Works with any of the 100+ crops!)
+  async setActiveCrop(
+    cropIdOrName: number | string,
+    deviceId: string = 'ESP32-0001',
+    thresholds?: any,
+  ) {
     let crop: Crop | null = null;
-    if (typeof cropIdOrName === 'number' || !isNaN(Number(cropIdOrName))) {
+    if (typeof cropIdOrName === 'number' || (!isNaN(Number(cropIdOrName)) && typeof cropIdOrName !== 'string')) {
       crop = await this.cropRepository.findOne({ where: { id: Number(cropIdOrName) } });
     }
     if (!crop && typeof cropIdOrName === 'string') {
-      crop = await this.cropRepository.findOne({ where: { name: cropIdOrName } });
+      const trimmed = cropIdOrName.trim();
+      crop = await this.cropRepository
+        .createQueryBuilder('crop')
+        .where('LOWER(crop.name) = LOWER(:name)', { name: trimmed })
+        .getOne();
     }
 
+    // If crop does not yet exist in the DB, create it dynamically from passed thresholds
     if (!crop) {
-      throw new NotFoundException(`Crop "${cropIdOrName}" not found`);
+      const name = String(cropIdOrName).trim();
+      let minTemp = 20, maxTemp = 30;
+      let minPh = 6.0, maxPh = 7.0;
+      let minMoisture = 55, maxMoisture = 75;
+      let minNitrogen = 100, maxNitrogen = 140;
+      let minPhosphorus = 60, maxPhosphorus = 90;
+      let minPotassium = 80, maxPotassium = 120;
+
+      if (thresholds) {
+        if (thresholds.temp) {
+          const m = String(thresholds.temp).match(/(\d+)[^0-9]+(\d+)/);
+          if (m) { minTemp = Number(m[1]); maxTemp = Number(m[2]); }
+        }
+        if (thresholds.ph) {
+          const m = String(thresholds.ph).match(/([\d\.]+)[^0-9\.]+([\d\.]+)/);
+          if (m) { minPh = Number(m[1]); maxPh = Number(m[2]); }
+        }
+        if (thresholds.moisture) {
+          const m = String(thresholds.moisture).match(/(\d+)[^0-9]+(\d+)/);
+          if (m) { minMoisture = Number(m[1]); maxMoisture = Number(m[2]); }
+        }
+        if (thresholds.nitrogen) {
+          const n = Number(String(thresholds.nitrogen).replace(/[^0-9]/g, ''));
+          if (n > 0) { minNitrogen = n; maxNitrogen = Math.round(n * 1.3); }
+        }
+        if (thresholds.phosphorus) {
+          const p = Number(String(thresholds.phosphorus).replace(/[^0-9]/g, ''));
+          if (p > 0) { minPhosphorus = p; maxPhosphorus = Math.round(p * 1.3); }
+        }
+        if (thresholds.potassium) {
+          const k = Number(String(thresholds.potassium).replace(/[^0-9]/g, ''));
+          if (k > 0) { minPotassium = k; maxPotassium = Math.round(k * 1.3); }
+        }
+      }
+
+      crop = this.cropRepository.create({
+        name,
+        minTemp,
+        maxTemp,
+        minPh,
+        maxPh,
+        minMoisture,
+        maxMoisture,
+        minNitrogen,
+        maxNitrogen,
+        minPhosphorus,
+        maxPhosphorus,
+        minPotassium,
+        maxPotassium,
+      });
+      crop = await this.cropRepository.save(crop);
+      console.log(`🌱 Created new Crop entity on the fly: ${name}`);
     }
 
     let device = await this.deviceRepository.findOne({

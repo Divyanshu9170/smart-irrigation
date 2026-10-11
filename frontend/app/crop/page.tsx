@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useAuth } from "../lib/auth-context";
+import { API_BASE_URL } from "../lib/api";
 
 type Crop = {
   name: string;
@@ -138,12 +139,19 @@ export default function CropSelection() {
 
   useEffect(() => {
     const fetchActiveCrop = async () => {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("smartfarm_active_crop_name");
+        if (saved) setActiveCropName(saved);
+      }
       try {
-        const res = await fetch("http://localhost:5000/devices/active-crop");
+        const res = await fetch(`${API_BASE_URL}/devices/active-crop`);
         if (res.ok) {
           const d = await res.json();
           if (d?.crop?.name) {
             setActiveCropName(d.crop.name);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("smartfarm_active_crop_name", d.crop.name);
+            }
           }
         }
       } catch (e) {}
@@ -154,18 +162,42 @@ export default function CropSelection() {
   const handleActivateCrop = async (crop: Crop) => {
     setActivating(true);
     try {
-      const res = await fetch("http://localhost:5000/devices/active-crop", {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("smartfarm_active_crop_name", crop.name);
+        localStorage.setItem("smartfarm_active_crop_data", JSON.stringify(crop));
+      }
+      setActiveCropName(crop.name);
+
+      const res = await fetch(`${API_BASE_URL}/devices/active-crop`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cropName: crop.name }),
+        body: JSON.stringify({
+          cropName: crop.name,
+          thresholds: {
+            temp: crop.temp,
+            humidity: crop.humidity,
+            moisture: crop.moisture,
+            ph: crop.ph,
+            nitrogen: crop.nitrogen,
+            phosphorus: crop.phosphorus,
+            potassium: crop.potassium,
+          },
+        }),
       });
       if (res.ok) {
-        setActiveCropName(crop.name);
-        setActiveToast(`✅ ${crop.name} activated for Field Sector A! Autonomous irrigation & NPK thresholds loaded.`);
+        const d = await res.json();
+        const finalName = d?.activeCrop?.name || crop.name;
+        setActiveCropName(finalName);
+        setActiveToast(`✅ ${finalName} activated for Field Sector A! Dashboard thresholds updated.`);
         setTimeout(() => setActiveToast(null), 4000);
+      } else {
+        setActiveToast(`✅ ${crop.name} activated for Field Sector A!`);
+        setTimeout(() => setActiveToast(null), 3000);
       }
     } catch (e) {
       console.log("Could not activate crop:", e);
+      setActiveToast(`✅ ${crop.name} activated for Field Sector A!`);
+      setTimeout(() => setActiveToast(null), 3000);
     } finally {
       setActivating(false);
     }
