@@ -259,6 +259,7 @@ export default function Home() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const updated = await response.json();
       setDevices((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+      setRelayStatus((prev) => (prev ? { ...prev, water: newStatus } : { water: newStatus }));
     } catch (err) {
       console.error("Pump toggle failed:", err);
       alert("❌ Could not update pump status.");
@@ -332,6 +333,9 @@ export default function Home() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const updated = await response.json();
       setRelayStatus(updated);
+      if (relayName === "water") {
+        setDevices((prev) => prev.map((d) => (d.id === deviceId ? { ...d, pumpStatus: newStatus } : d)));
+      }
       loadRelayHistory();
     } catch (err) {
       console.error(`Relay toggle failed for ${relayName}:`, err);

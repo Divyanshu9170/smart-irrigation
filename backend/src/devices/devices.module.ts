@@ -13,5 +13,6 @@ import { AutoAction } from '../auto-actions/auto-action.entity'; // ✅ Feature 
   ],
   controllers: [DevicesController],
   providers: [DevicesService],
+  exports: [DevicesService],
 })
 export class DevicesModule {}

@@ -128,7 +128,35 @@ export class DevicesService {
 
     return updated;
   }
-    async getRelayStatus(id: number, userId: number) {
+
+  // In-memory persistent state of all 6 relays per deviceId
+  private deviceRelays: Record<string, Record<string, 'ON' | 'OFF'>> = {};
+  private deviceIps: Record<string, string> = {};
+
+  registerDeviceIp(deviceId: string, ip: string) {
+    if (!ip) return;
+    const cleanIp = ip.replace(/^.*:/, '').trim();
+    if (cleanIp && cleanIp !== '127.0.0.1') {
+      this.deviceIps[deviceId] = cleanIp;
+      console.log(`📡 Registered IP for device ${deviceId}: ${cleanIp}`);
+    }
+  }
+
+  getRelaysForDevice(deviceId: string): Record<string, 'ON' | 'OFF'> {
+    if (!this.deviceRelays[deviceId]) {
+      this.deviceRelays[deviceId] = {
+        water: 'OFF',
+        nitrogen: 'OFF',
+        phosphorus: 'OFF',
+        potassium: 'OFF',
+        fan: 'OFF',
+        bulb: 'OFF',
+      };
+    }
+    return this.deviceRelays[deviceId];
+  }
+
+  async getRelayStatus(id: number, userId: number) {
     const device = await this.deviceRepository.findOne({
       where: { id },
       relations: ['owner'],
@@ -142,14 +170,9 @@ export class DevicesService {
       throw new ForbiddenException('You do not own this device');
     }
 
-    return {
-      water: device.pumpStatus || 'OFF',
-      nitrogen: 'OFF',
-      phosphorus: 'OFF',
-      potassium: 'OFF',
-      fan: 'OFF',
-      bulb: 'OFF',
-    };
+    const current = this.getRelaysForDevice(device.deviceId);
+    current.water = (device.pumpStatus as 'ON' | 'OFF') || current.water || 'OFF';
+    return current;
   }
 
   async setRelay(
@@ -177,6 +200,9 @@ export class DevicesService {
       throw new ForbiddenException('You do not own this device');
     }
 
+    const current = this.getRelaysForDevice(device.deviceId);
+    current[relay] = status;
+
     if (relay === 'water') {
       device.pumpStatus = status;
       await this.deviceRepository.save(device);
@@ -184,17 +210,28 @@ export class DevicesService {
 
     await this.autoActionRepository.save({
       deviceId: device.id,
-      action: `${relay} turned ${status} (manual)`,
+      action: `${relay.toUpperCase()} switched ${status} (manual)`,
       createdAt: new Date(),
     });
 
-    return {
-      water: relay === 'water' ? status : device.pumpStatus || 'OFF',
-      nitrogen: relay === 'nitrogen' ? status : 'OFF',
-      phosphorus: relay === 'phosphorus' ? status : 'OFF',
-      potassium: relay === 'potassium' ? status : 'OFF',
-      fan: relay === 'fan' ? status : 'OFF',
-      bulb: relay === 'bulb' ? status : 'OFF',
-    };
+    // ⚡ Forward command immediately to physical ESP32 via HTTP POST
+    const espIp = this.deviceIps[device.deviceId];
+    if (espIp) {
+      console.log(`⚡ Sending push command to physical ESP32 (http://${espIp}:80/relay) -> ${relay}: ${status}`);
+      fetch(`http://${espIp}:80/relay`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ relay, status }),
+        signal: AbortSignal.timeout(2000),
+      })
+        .then((res) => console.log(`✅ ESP32 hardware response: HTTP ${res.status}`))
+        .catch((err) => {
+          console.log(`⚠️ ESP32 direct push notice (${err.message}) - state will sync via telemetry response.`);
+        });
+    } else {
+      console.log(`ℹ️ ESP32 IP not yet discovered for ${device.deviceId}. Command saved and will sync on next sensor post.`);
+    }
+
+    return current;
   }
 }

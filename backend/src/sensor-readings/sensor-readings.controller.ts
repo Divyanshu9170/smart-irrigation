@@ -1,6 +1,7 @@
-import { Controller, Get, Post, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Request, Req } from '@nestjs/common';
 import { SensorReadingsService } from './sensor-readings.service';
 import { GeminiService } from '../gemini.service';
+import { DevicesService } from '../devices/devices.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 import * as fs from 'fs';
@@ -13,17 +14,26 @@ export class SensorReadingsController {
   constructor(
     private readonly sensorService: SensorReadingsService,
     private readonly geminiService: GeminiService,
+    private readonly devicesService: DevicesService,
   ) {
     console.log('🔥 CONTROLLER LOADED');
   }
 
-  // ✅ EXISTING - DO NOT TOUCH
-  // 🔓 Left public on purpose — this is the ESP32 ingestion endpoint.
-  // The hardware can't hold a user JWT session. See README for the
-  // planned device-level auth approach (Feature 4+).
+  // 🔓 Public ESP32 ingestion endpoint.
+  // Returns both reading confirmation AND latest target relay states for all 6 motors/valves.
   @Post()
-  create(@Body() body: any) {
-    return this.sensorService.create(body);
+  async create(@Body() body: any, @Req() req: any) {
+    const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || body?.ip;
+    const deviceId = body?.deviceId || 'ESP32-0001';
+    if (rawIp) {
+      this.devicesService.registerDeviceIp(deviceId, String(rawIp));
+    }
+    const result: any = await this.sensorService.create(body);
+    const relays = this.devicesService.getRelaysForDevice(deviceId);
+    return {
+      ...result,
+      relays,
+    };
   }
 
   // 🔒 Feature 3: now requires a logged-in user, and only returns

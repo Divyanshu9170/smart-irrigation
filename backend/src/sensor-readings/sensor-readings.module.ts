@@ -5,9 +5,13 @@ import { SensorReadingsService } from './sensor-readings.service';
 import { SensorReading } from './sensor-reading.entity';
 import { GeminiService } from '../gemini.service';
 import { Device } from '../devices/device.entity';
+import { DevicesModule } from '../devices/devices.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([SensorReading, Device])],
+  imports: [
+    TypeOrmModule.forFeature([SensorReading, Device]),
+    DevicesModule,
+  ],
   controllers: [SensorReadingsController],
   providers: [SensorReadingsService, GeminiService],
 })
