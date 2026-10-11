@@ -53,4 +53,5 @@ while True:
     except Exception as e:
         print(f"❌ Unexpected error: {e}")
 
-    time.sleep(10)
+    # Capture snapshot every 1 minute (60 seconds)
+    time.sleep(60)
