@@ -92,13 +92,78 @@ export default function Home() {
     }
   }, [authLoading, token, router]);
 
-  const CAMERA_URL = "http://10.97.53.164";
+  const [cameraUrl, setCameraUrl] = useState<string>("http://10.97.53.164");
+  const [camSettingsOpen, setCamSettingsOpen] = useState(false);
+  const [inputCamUrl, setInputCamUrl] = useState<string>("");
+  const [camSaveMsg, setCamSaveMsg] = useState<string | null>(null);
   const cameraActiveRef = useRef(true);
   const cameraTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cameraUrlRef = useRef<string>("http://10.97.53.164");
+
+  // Sync camera URL from localStorage and Backend dynamically
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedCam = localStorage.getItem("smartfarm_camera_url");
+      if (savedCam) {
+        setCameraUrl(savedCam);
+        cameraUrlRef.current = savedCam;
+      }
+    }
+
+    const syncCameraFromBackend = async () => {
+      try {
+        const res = await fetch(`${API_BASE_URL}/devices/camera-url`);
+        if (res.ok) {
+          const d = await res.json();
+          if (d?.url) {
+            setCameraUrl(d.url);
+            cameraUrlRef.current = d.url;
+            if (typeof window !== "undefined") {
+              localStorage.setItem("smartfarm_camera_url", d.url);
+            }
+          }
+        }
+      } catch (err) {
+        console.log("Could not auto-sync camera URL from backend:", err);
+      }
+    };
+
+    syncCameraFromBackend();
+  }, []);
+
+  const updateCameraUrl = async (newUrl: string) => {
+    let formatted = newUrl.trim();
+    if (!formatted) return;
+    if (!formatted.startsWith("http://") && !formatted.startsWith("https://")) {
+      formatted = `http://${formatted}`;
+    }
+    formatted = formatted.replace(/\/+$/, "");
+
+    setCameraUrl(formatted);
+    cameraUrlRef.current = formatted;
+    if (typeof window !== "undefined") {
+      localStorage.setItem("smartfarm_camera_url", formatted);
+    }
+
+    try {
+      await fetch(`${API_BASE_URL}/devices/camera-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: formatted }),
+      });
+      setCamSaveMsg("✅ Camera URL updated!");
+      setTimeout(() => setCamSaveMsg(null), 3000);
+    } catch (e) {
+      console.log("Failed to sync new camera URL to backend:", e);
+    }
+  };
 
   const requestNextImage = () => {
     const image = new window.Image();
-    const imageUrl = `${CAMERA_URL}/capture?t=${Date.now()}`;
+    const base = cameraUrlRef.current || "http://10.97.53.164";
+    const imageUrl = base.includes("/capture")
+      ? `${base}?t=${Date.now()}`
+      : `${base}/capture?t=${Date.now()}`;
 
     image.onload = () => {
       if (!cameraActiveRef.current) return;
@@ -1764,11 +1829,107 @@ export default function Home() {
                     <span className="box-title-dot" style={{ background: "var(--rose)" }}></span>
                     AI Plant Health &amp; Optical Vision
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--rose)", fontFamily: "var(--font-mono)", fontWeight: 800 }}>
-                    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--rose)", animation: "pulseAnim 1.5s infinite" }}></span>
-                    CAM LIVE
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <button
+                      onClick={() => {
+                        setInputCamUrl(cameraUrl);
+                        setCamSettingsOpen(!camSettingsOpen);
+                      }}
+                      style={{
+                        background: "rgba(255, 255, 255, 0.06)",
+                        border: "1px solid rgba(255, 255, 255, 0.18)",
+                        color: "var(--text-sub)",
+                        borderRadius: 6,
+                        padding: "3px 8px",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        transition: "all 0.2s ease"
+                      }}
+                      title="Click to change ESP32-CAM IP"
+                    >
+                      <span>⚙️</span>
+                      <span style={{ fontFamily: "var(--font-mono)", color: "var(--mint)", fontWeight: 700 }}>
+                        {cameraUrl.replace(/^https?:\/\//, '')}
+                      </span>
+                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--rose)", fontFamily: "var(--font-mono)", fontWeight: 800 }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--rose)", animation: "pulseAnim 1.5s infinite" }}></span>
+                      CAM LIVE
+                    </div>
                   </div>
                 </div>
+
+                {/* Quick Camera IP Switcher Panel (No code editing needed) */}
+                {camSettingsOpen && (
+                  <div style={{
+                    padding: "12px 14px",
+                    background: "rgba(16, 185, 129, 0.08)",
+                    border: "1px solid rgba(16, 185, 129, 0.25)",
+                    borderRadius: 10,
+                    marginBottom: 14,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    animation: "fadeIn 0.2s ease"
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "var(--mint)", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>📸</span> Change Camera IP / Stream URL
+                      </span>
+                      <button
+                        onClick={() => setCamSettingsOpen(false)}
+                        style={{ background: "none", border: "none", color: "var(--text-sub)", cursor: "pointer", fontSize: 13 }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        type="text"
+                        value={inputCamUrl}
+                        onChange={(e) => setInputCamUrl(e.target.value)}
+                        placeholder="e.g. 10.147.66.164 or http://10.97.53.164"
+                        style={{
+                          flex: 1,
+                          padding: "6px 10px",
+                          background: "rgba(0,0,0,0.6)",
+                          border: "1px solid rgba(255,255,255,0.2)",
+                          borderRadius: 6,
+                          color: "#fff",
+                          fontSize: 12,
+                          fontFamily: "var(--font-mono)"
+                        }}
+                      />
+                      <button
+                        onClick={() => {
+                          updateCameraUrl(inputCamUrl);
+                          setCamSettingsOpen(false);
+                        }}
+                        style={{
+                          padding: "6px 14px",
+                          background: "var(--mint)",
+                          color: "#000",
+                          border: "none",
+                          borderRadius: 6,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer"
+                        }}
+                      >
+                        Save IP
+                      </button>
+                    </div>
+                    {camSaveMsg && (
+                      <span style={{ fontSize: 11, color: "var(--mint)" }}>{camSaveMsg}</span>
+                    )}
+                    <span style={{ fontSize: 10, color: "var(--text-sub)" }}>
+                      💡 Tip: When ESP32-CAM connects to a new hotspot/Wi-Fi, enter its new IP here. Saved automatically in browser &amp; backend without touching code!
+                    </span>
+                  </div>
+                )}
 
                 {/* Live Camera Frame with Corner Brackets */}
                 <div className="cam-frame-hud">
@@ -1802,9 +1963,11 @@ export default function Home() {
                     <div className="cam-tele-k">Stream Cadence</div>
                     <div className="cam-tele-v">1s Refresh</div>
                   </div>
-                  <div className="cam-tele-chip">
-                    <div className="cam-tele-k">Target Zone</div>
-                    <div className="cam-tele-v">Zone A-1</div>
+                  <div className="cam-tele-chip" style={{ cursor: "pointer" }} onClick={() => { setInputCamUrl(cameraUrl); setCamSettingsOpen(true); }} title="Click to edit IP">
+                    <div className="cam-tele-k">Camera IP ✎</div>
+                    <div className="cam-tele-v" style={{ color: "var(--mint)", textDecoration: "underline" }}>
+                      {cameraUrl.replace(/^https?:\/\//, '')}
+                    </div>
                   </div>
                   <div className="cam-tele-chip">
                     <div className="cam-tele-k">AI Model</div>
