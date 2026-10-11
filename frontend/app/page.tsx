@@ -839,9 +839,9 @@ export default function Home() {
            FULL TOP BANNER AREA FOR THE PROJECT NAME (WITH 3D CANVAS)
         ══════════════════════════════════════════════════════════════ */
         .project-full-banner {
-          position: relative; width: 100%; min-height: 440px; overflow: hidden;
-          background: radial-gradient(circle 800px at 50% 30%, rgba(16, 185, 129, 0.14) 0%, rgba(6, 182, 212, 0.08) 50%, rgba(5, 8, 14, 0.95) 100%);
-          border-bottom: 1px solid rgba(52,211,153,0.25);
+          position: relative; width: 100%; min-height: 480px; overflow: hidden;
+          background: linear-gradient(180deg, rgba(3, 14, 10, 0.82) 0%, rgba(2, 8, 6, 0.94) 100%), url('/farm/hero-field.jpg') center/cover no-repeat;
+          border-bottom: 1px solid rgba(52,211,153,0.3);
           display: flex; align-items: center; justify-content: center;
           padding: 60px 24px; text-align: center;
         }
@@ -852,6 +852,134 @@ export default function Home() {
         .banner-inner-content {
           position: relative; z-index: 2; max-width: 1080px; width: 100%; margin: 0 auto;
           display: flex; flex-direction: column; align-items: center;
+        }
+
+        /* ── LIVING NATURE FARM ZONES & CROP ECOSYSTEM ── */
+        .nature-zones-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 18px;
+          margin-bottom: 34px;
+        }
+        .nature-card {
+          background: rgba(14, 26, 20, 0.78);
+          border: 1px solid rgba(52, 211, 153, 0.2);
+          border-radius: 18px;
+          overflow: hidden;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(12px);
+        }
+        .nature-card:hover {
+          transform: translateY(-5px);
+          border-color: rgba(52, 211, 153, 0.45);
+          box-shadow: 0 16px 36px -10px rgba(16, 185, 129, 0.28);
+        }
+        .nature-card-img-wrap {
+          position: relative;
+          width: 100%;
+          height: 145px;
+          overflow: hidden;
+        }
+        .nature-card-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          transition: transform 0.45s ease;
+        }
+        .nature-card:hover .nature-card-img {
+          transform: scale(1.08);
+        }
+        .nature-badge-float {
+          position: absolute;
+          bottom: 10px;
+          left: 10px;
+          background: rgba(4, 14, 10, 0.88);
+          backdrop-filter: blur(8px);
+          border: 1px solid rgba(255, 255, 255, 0.16);
+          color: #fff;
+          font-size: 11px;
+          font-weight: 700;
+          padding: 3.5px 9px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+        .nature-status-pill {
+          position: absolute;
+          top: 10px;
+          right: 10px;
+          background: rgba(4, 14, 10, 0.88);
+          backdrop-filter: blur(8px);
+          border: 1px solid rgba(52, 211, 153, 0.3);
+          color: var(--mint);
+          font-size: 10.5px;
+          font-weight: 700;
+          padding: 2.5px 8.5px;
+          border-radius: 20px;
+        }
+        .nature-card-body {
+          padding: 14px 16px;
+          display: flex;
+          flex-direction: column;
+          flex: 1;
+        }
+        .nature-card-title {
+          font-size: 14px;
+          font-weight: 800;
+          color: #fff;
+          margin-bottom: 4px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .nature-card-sub {
+          font-size: 11.5px;
+          color: var(--text-muted);
+          line-height: 1.45;
+          margin-bottom: 12px;
+          flex: 1;
+        }
+        .nature-stats-row {
+          display: flex;
+          gap: 8px;
+          padding-top: 10px;
+          border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .nature-stat-chip {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+        }
+        .nature-stat-chip .n-lbl {
+          font-size: 9.5px;
+          color: var(--text-sub);
+          text-transform: uppercase;
+          font-family: var(--font-mono);
+          letter-spacing: 0.5px;
+        }
+        .nature-stat-chip .n-val {
+          font-size: 13.5px;
+          font-weight: 800;
+          color: #fff;
+          font-family: var(--font-mono);
+        }
+        .relay-thumb-img {
+          width: 38px;
+          height: 38px;
+          border-radius: 9px;
+          object-fit: cover;
+          border: 1px solid rgba(255,255,255,0.15);
+          flex-shrink: 0;
+        }
+        @media(max-width: 1080px) {
+          .nature-zones-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media(max-width: 600px) {
+          .nature-zones-grid { grid-template-columns: 1fr; }
         }
 
         .academic-capstone-tag {
@@ -1496,6 +1624,116 @@ export default function Home() {
           )}
 
           {/* ════════════════════════════════════════════════════════════
+              LIVING FARM ECOSYSTEM & ACTIVE FIELD SECTORS
+          ════════════════════════════════════════════════════════════ */}
+          <div className="section-header" style={{ marginTop: 4 }}>
+            <div className="sec-title-group">
+              <span className="sec-label">Agricultural Field Topology</span>
+              <h2 className="sec-h2">Living Farm Ecosystem &amp; Crops</h2>
+              <div className="sec-desc">Real-time status across active field zones, automated irrigation lines, and living soil</div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--mint)", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
+              <span className="pulse-dot"></span> 4 Zones Synchronized
+            </div>
+          </div>
+
+          <div className="nature-zones-grid">
+            {/* Zone 1: Field Crops */}
+            <div className="nature-card" onMouseMove={handleCardTilt} onMouseLeave={handleCardReset}>
+              <div className="nature-card-img-wrap">
+                <img src="/farm/hero-field.jpg" alt="Lush Farm Field" className="nature-card-img" />
+                <div className="nature-badge-float">🌾 Sector A · Crop Field</div>
+                <div className="nature-status-pill">● Thriving</div>
+              </div>
+              <div className="nature-card-body">
+                <div className="nature-card-title">Canopy Growth &amp; Grains</div>
+                <div className="nature-card-sub">Lush green crop rows with natural sunlight &amp; gentle canopy aeration.</div>
+                <div className="nature-stats-row">
+                  <div className="nature-stat-chip">
+                    <span className="n-lbl">Soil Moisture</span>
+                    <span className="n-val">{latest?.soilMoisture ?? 55}%</span>
+                  </div>
+                  <div className="nature-stat-chip">
+                    <span className="n-lbl">Canopy Temp</span>
+                    <span className="n-val">{latest?.temperature ?? 26.5}°C</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Zone 2: Water & Irrigation */}
+            <div className="nature-card" onMouseMove={handleCardTilt} onMouseLeave={handleCardReset}>
+              <div className="nature-card-img-wrap">
+                <img src="/farm/water-droplet.jpg" alt="Smart Drip Irrigation" className="nature-card-img" />
+                <div className="nature-badge-float">💧 Sector B · Drip Line</div>
+                <div className="nature-status-pill" style={{ color: pumpActive ? "var(--mint)" : "#94a3b8" }}>
+                  ● {pumpActive ? "Pump Active" : "Standby"}
+                </div>
+              </div>
+              <div className="nature-card-body">
+                <div className="nature-card-title">Precision Drip Hydration</div>
+                <div className="nature-card-sub">Pure water delivery directly to root zones without runoff waste.</div>
+                <div className="nature-stats-row">
+                  <div className="nature-stat-chip">
+                    <span className="n-lbl">Water Status</span>
+                    <span className="n-val" style={{ color: pumpActive ? "var(--mint)" : "#94a3b8" }}>{pumpActive ? "FLOWING" : "IDLE"}</span>
+                  </div>
+                  <div className="nature-stat-chip">
+                    <span className="n-lbl">Humidity</span>
+                    <span className="n-val">{latest?.humidity ?? 60}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Zone 3: Fertile Soil & Seedling */}
+            <div className="nature-card" onMouseMove={handleCardTilt} onMouseLeave={handleCardReset}>
+              <div className="nature-card-img-wrap">
+                <img src="/farm/seedling-soil.jpg" alt="Living Soil & Seedling" className="nature-card-img" />
+                <div className="nature-badge-float">🌱 Sector C · Living Soil</div>
+                <div className="nature-status-pill">● Nutrient Rich</div>
+              </div>
+              <div className="nature-card-body">
+                <div className="nature-card-title">Root Zone &amp; Soil Chemistry</div>
+                <div className="nature-card-sub">Living organic substrate enriched with Nitrogen, Phosphorus &amp; Potassium.</div>
+                <div className="nature-stats-row">
+                  <div className="nature-stat-chip">
+                    <span className="n-lbl">Soil pH</span>
+                    <span className="n-val" style={{ color: "var(--mint)" }}>6.5 pH</span>
+                  </div>
+                  <div className="nature-stat-chip">
+                    <span className="n-lbl">NPK Total</span>
+                    <span className="n-val">{Math.round((latest?.nitrogen ?? 0) + (latest?.phosphorus ?? 0) + (latest?.potassium ?? 0))} mg/kg</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Zone 4: Orchard & Trees */}
+            <div className="nature-card" onMouseMove={handleCardTilt} onMouseLeave={handleCardReset}>
+              <div className="nature-card-img-wrap">
+                <img src="/farm/smart-orchard.jpg" alt="Natural Orchard & Canopy" className="nature-card-img" />
+                <div className="nature-badge-float">🌳 Sector D · Orchard &amp; Trees</div>
+                <div className="nature-status-pill">● Stable Climate</div>
+              </div>
+              <div className="nature-card-body">
+                <div className="nature-card-title">Canopy &amp; Microclimate Shield</div>
+                <div className="nature-card-sub">Tree windbreaks and natural shade regulating greenhouse microclimate.</div>
+                <div className="nature-stats-row">
+                  <div className="nature-stat-chip">
+                    <span className="n-lbl">Cooling Fan</span>
+                    <span className="n-val">{relayStatus?.fan === "ON" ? "ON" : "OFF"}</span>
+                  </div>
+                  <div className="nature-stat-chip">
+                    <span className="n-lbl">Leaf Health</span>
+                    <span className="n-val" style={{ color: "var(--mint)" }}>OPTIMAL</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════════════════════════
               LIVE SENSOR MONITORING (7 SENSORS WITH 3D TILT EFFECT)
           ════════════════════════════════════════════════════════════ */}
           <div className="section-header" id="live-sensors">
@@ -1597,15 +1835,15 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* 6 Relay Actuator Cards with 3D Tilt */}
+                {/* 6 Relay Actuator Cards with Nature Imagery & 3D Tilt */}
                 <div className="relay-grid-container">
                   {[
-                    { key: "nitrogen", icon: "🧪", label: "Nitrogen Line", sub: "N fertilizer doser" },
-                    { key: "phosphorus", icon: "⚗️", label: "Phosphorus Line", sub: "P nutrient valve" },
-                    { key: "potassium", icon: "💎", label: "Potassium Line", sub: "K enrichment feed" },
-                    { key: "water", icon: "🚿", label: "Drip Supply", sub: "Main water line" },
-                    { key: "fan", icon: "🌀", label: "Exhaust Fan", sub: "Canopy cooling unit" },
-                    { key: "bulb", icon: "💡", label: "Growth Lighting", sub: "Photosynthesis bulb" },
+                    { key: "water", icon: "🚿", label: "Drip Supply", sub: "Main water line", img: "/farm/water-droplet.jpg" },
+                    { key: "nitrogen", icon: "🧪", label: "Nitrogen Line", sub: "N fertilizer doser", img: "/farm/seedling-soil.jpg" },
+                    { key: "phosphorus", icon: "⚗️", label: "Phosphorus Line", sub: "P nutrient valve", img: "/farm/nature-crops.jpg" },
+                    { key: "potassium", icon: "💎", label: "Potassium Line", sub: "K enrichment feed", img: "/farm/hero-field.jpg" },
+                    { key: "fan", icon: "🌀", label: "Exhaust Fan", sub: "Canopy cooling unit", img: "/farm/smart-orchard.jpg" },
+                    { key: "bulb", icon: "💡", label: "Growth Lighting", sub: "Photosynthesis bulb", img: "/farm/nature-crops.jpg" },
                   ].map((r) => {
                     const isOn = relayStatus?.[r.key] === "ON";
                     const isLoading = relayLoadingKey === r.key;
@@ -1620,7 +1858,7 @@ export default function Home() {
                         type="button"
                       >
                         <div className="relay-info-side">
-                          <div className="relay-icon-avatar">{r.icon}</div>
+                          <img src={r.img} alt={r.label} className="relay-thumb-img" />
                           <div>
                             <div className="relay-name-label">{r.label}</div>
                             <div className="relay-purpose-sub">{r.sub}</div>
@@ -2017,7 +2255,18 @@ export default function Home() {
                   </div>
                   <div className="filmstrip-grid">
                     {images.length === 0
-                      ? [...Array(6)].map((_, i) => <div key={i} className="filmstrip-empty">Frame {i+1}</div>)
+                      ? [
+                          { img: "/farm/nature-crops.jpg", name: "Lush Green Canopy" },
+                          { img: "/farm/seedling-soil.jpg", name: "Living Seedling & Soil" },
+                          { img: "/farm/water-droplet.jpg", name: "Drip Hydration Leaf" },
+                          { img: "/farm/smart-orchard.jpg", name: "Canopy Foliage" },
+                          { img: "/farm/hero-field.jpg", name: "Open Field Vista" },
+                          { img: "/farm/nature-crops.jpg", name: "Crop Foliage Health" },
+                        ].map((ref, i) => (
+                          <div className="filmstrip-thumb" key={i} title={ref.name}>
+                            <img src={ref.img} alt={ref.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8 }} />
+                          </div>
+                        ))
                       : images.slice(0, 6).map((img, i) => (
                         <div className="filmstrip-thumb" key={i} title={`Frame ${i+1}`}>
                           <img src={img.url} alt={`Snapshot ${i+1}`} />
