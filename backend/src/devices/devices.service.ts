@@ -471,6 +471,7 @@ export class DevicesService {
     const actionsToLog: string[] = [];
 
     // 1. Water (Soil Moisture)
+    const shutoffMoisture = crop.maxMoisture ? (crop.minMoisture + crop.maxMoisture) / 2 : crop.minMoisture + 5;
     if (readings.soilMoisture < crop.minMoisture) {
       if (current.water !== 'ON') {
         current.water = 'ON';
@@ -479,7 +480,7 @@ export class DevicesService {
           `[AUTO] Water Pump ON: Soil moisture ${readings.soilMoisture}% < min ${crop.minMoisture}% (${crop.name})`,
         );
       }
-    } else if (readings.soilMoisture >= (crop.maxMoisture || (crop.minMoisture + 10))) {
+    } else if (readings.soilMoisture >= shutoffMoisture) {
       if (current.water !== 'OFF') {
         current.water = 'OFF';
         device.pumpStatus = 'OFF';
