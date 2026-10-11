@@ -131,7 +131,45 @@ export default function CropSelection() {
   const [filter, setFilter] = useState<"All" | "Vegetable" | "Fruit" | "Herb">("All");
   const [selected, setSelected] = useState<Crop | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeCropName, setActiveCropName] = useState<string>("Tomato");
+  const [activating, setActivating] = useState(false);
+  const [activeToast, setActiveToast] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const fetchActiveCrop = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/devices/active-crop");
+        if (res.ok) {
+          const d = await res.json();
+          if (d?.crop?.name) {
+            setActiveCropName(d.crop.name);
+          }
+        }
+      } catch (e) {}
+    };
+    fetchActiveCrop();
+  }, []);
+
+  const handleActivateCrop = async (crop: Crop) => {
+    setActivating(true);
+    try {
+      const res = await fetch("http://localhost:5000/devices/active-crop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cropName: crop.name }),
+      });
+      if (res.ok) {
+        setActiveCropName(crop.name);
+        setActiveToast(`✅ ${crop.name} activated for Field Sector A! Autonomous irrigation & NPK thresholds loaded.`);
+        setTimeout(() => setActiveToast(null), 4000);
+      }
+    } catch (e) {
+      console.log("Could not activate crop:", e);
+    } finally {
+      setActivating(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     return crops.filter((c) => {
@@ -467,6 +505,84 @@ export default function CropSelection() {
           line-height: 1.6; max-width: 700px; margin: 0 auto;
         }
 
+        .active-field-indicator {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 20px;
+          border-radius: 100px;
+          background: rgba(16, 185, 129, 0.16);
+          border: 1px solid rgba(52, 211, 153, 0.45);
+          color: #fff;
+          font-size: 13px;
+          margin-top: 18px;
+          box-shadow: 0 0 24px rgba(16, 185, 129, 0.25);
+        }
+        .active-field-indicator strong {
+          color: var(--mint);
+        }
+        .active-field-dash-link {
+          color: var(--cyan);
+          text-decoration: none;
+          font-weight: 700;
+          font-size: 12px;
+          margin-left: 8px;
+          border-bottom: 1px dashed var(--cyan);
+        }
+        .active-toast-banner {
+          margin-top: 14px;
+          padding: 10px 18px;
+          border-radius: 10px;
+          background: rgba(16, 185, 129, 0.25);
+          border: 1px solid var(--mint);
+          color: #fff;
+          font-weight: 700;
+          font-size: 13px;
+          animation: fadeIn 0.3s;
+        }
+        .crop-field-active-pill {
+          position: absolute;
+          top: 12px;
+          left: 12px;
+          background: linear-gradient(135deg, #10b981, #059669);
+          color: #fff;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.6px;
+          padding: 3px 9px;
+          border-radius: 20px;
+          box-shadow: 0 0 14px rgba(16, 185, 129, 0.6);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+          z-index: 3;
+        }
+        .btn-field-activate {
+          width: 100%;
+          padding: 14px;
+          border-radius: 12px;
+          background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+          border: none;
+          color: #fff;
+          font-size: 13.5px;
+          font-weight: 800;
+          letter-spacing: 0.6px;
+          cursor: pointer;
+          transition: all 0.25s ease;
+          box-shadow: 0 4px 20px rgba(16, 185, 129, 0.35);
+        }
+        .btn-field-activate:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 28px rgba(16, 185, 129, 0.5);
+        }
+        .btn-field-activate.is-active,
+        .btn-field-activate:disabled {
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(52, 211, 153, 0.4);
+          color: var(--mint);
+          cursor: default;
+          box-shadow: none;
+          transform: none;
+        }
+
         /* MAIN CONTAINER */
         .crop-container {
           max-width: 1280px; margin: 0 auto; padding: 36px 24px 80px;
@@ -765,6 +881,17 @@ export default function CropSelection() {
             Scientific threshold parameters including ideal root moisture, canopy humidity, ambient temperature,
             substrate pH, and NPK mineral nutrition ratios calibrated for smart irrigation.
           </p>
+
+          {/* Active Field Crop Profile Indicator */}
+          <div className="active-field-indicator">
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--mint)", display: "inline-block", boxShadow: "0 0 10px var(--mint)" }}></span>
+            <span>Active Farm Crop: <strong>{activeCropName}</strong> (Autonomous Thresholds Live)</span>
+            <Link href="/" className="active-field-dash-link">Open Dashboard Matrix →</Link>
+          </div>
+
+          {activeToast && (
+            <div className="active-toast-banner">{activeToast}</div>
+          )}
         </div>
       </div>
 
@@ -845,6 +972,11 @@ export default function CropSelection() {
                         >
                           {crop.type}
                         </div>
+                        {crop.name.toLowerCase() === activeCropName.toLowerCase() && (
+                          <div className="crop-field-active-pill">
+                            ⭐ ACTIVE IN FIELD
+                          </div>
+                        )}
                       </div>
 
                       <div className="crop-info">
@@ -938,6 +1070,22 @@ export default function CropSelection() {
                   <div className="npk-name">Potassium</div>
                   <div className="npk-num">{selected.potassium}</div>
                 </div>
+              </div>
+
+              {/* ⚡ 1-Click Field Activation Button */}
+              <div style={{ marginTop: 24 }}>
+                <button
+                  type="button"
+                  className={`btn-field-activate ${selected.name.toLowerCase() === activeCropName.toLowerCase() ? "is-active" : ""}`}
+                  onClick={() => handleActivateCrop(selected)}
+                  disabled={activating || selected.name.toLowerCase() === activeCropName.toLowerCase()}
+                >
+                  {selected.name.toLowerCase() === activeCropName.toLowerCase()
+                    ? "⭐ CURRENTLY ACTIVE FOR FARM IRRIGATION & NPK"
+                    : activating
+                    ? "CONFIGURING THRESHOLDS..."
+                    : `⚡ ACTIVATE ${selected.name.toUpperCase()} FOR FIELD SECTOR A`}
+                </button>
               </div>
             </>
           );

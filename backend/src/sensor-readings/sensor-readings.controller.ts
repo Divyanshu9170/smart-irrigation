@@ -20,7 +20,8 @@ export class SensorReadingsController {
   }
 
   // 🔓 Public ESP32 ingestion endpoint.
-  // Returns both reading confirmation AND latest target relay states for all 6 motors/valves.
+  // Ingests sensor data, triggers Autonomous Crop Rules (Moisture/NPK/Temp),
+  // and returns confirmation, active crop profile, and updated relay states for all 6 actuators.
   @Post()
   async create(@Body() body: any, @Req() req: any) {
     const rawIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || body?.ip;
@@ -29,10 +30,25 @@ export class SensorReadingsController {
       this.devicesService.registerDeviceIp(deviceId, String(rawIp));
     }
     const result: any = await this.sensorService.create(body);
-    const relays = this.devicesService.getRelaysForDevice(deviceId);
+
+    // 🧠 Autonomous Decision Engine: Evaluate sensor values against Active Crop profile
+    const relays = await this.devicesService.evaluateAutonomousCropRules(deviceId, {
+      temperature: Number(body.temperature) || 28,
+      humidity: Number(body.humidity) || 60,
+      soilMoisture: Number(body.soilMoisture) || 0,
+      nitrogen: Number(body.nitrogen) || 0,
+      phosphorus: Number(body.phosphorus) || 0,
+      potassium: Number(body.potassium) || 0,
+      ph: Number(body.ph) || 6.5,
+    });
+
+    const activeInfo = await this.devicesService.getActiveCrop(deviceId);
+
     return {
       ...result,
       relays,
+      mode: activeInfo.mode,
+      activeCrop: activeInfo.crop,
     };
   }
 

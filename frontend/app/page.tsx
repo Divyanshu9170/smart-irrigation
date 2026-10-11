@@ -44,6 +44,23 @@ type DeviceType = {
   pumpStatus: string;
 };
 
+type ActiveCrop = {
+  id?: number;
+  name: string;
+  minTemp: number;
+  maxTemp: number;
+  minPh: number;
+  maxPh: number;
+  minMoisture: number;
+  maxMoisture: number;
+  minNitrogen: number;
+  maxNitrogen: number;
+  minPhosphorus: number;
+  maxPhosphorus: number;
+  minPotassium: number;
+  maxPotassium: number;
+};
+
 export default function Home() {
   const router = useRouter();
   const { token, user, loading: authLoading, logout } = useAuth();
@@ -60,6 +77,27 @@ export default function Home() {
   const [camPulse, setCamPulse] = useState(false);
   const [devices, setDevices] = useState<DeviceType[]>([]);
   const [pumpLoading, setPumpLoading] = useState(false);
+
+  // 🌾 Autonomous Crop Profile & Closed-Loop Control State
+  const [activeCrop, setActiveCrop] = useState<ActiveCrop | null>({
+    name: "Tomato",
+    minTemp: 18,
+    maxTemp: 27,
+    minPh: 6.0,
+    maxPh: 6.8,
+    minMoisture: 60,
+    maxMoisture: 80,
+    minNitrogen: 120,
+    maxNitrogen: 160,
+    minPhosphorus: 80,
+    maxPhosphorus: 120,
+    minPotassium: 150,
+    maxPotassium: 220,
+  });
+  const [systemMode, setSystemMode] = useState<"AUTO" | "MANUAL">("AUTO");
+  const [cropSelectorOpen, setCropSelectorOpen] = useState(false);
+  const [cropUpdating, setCropUpdating] = useState(false);
+  const [cropToast, setCropToast] = useState<string | null>(null);
 
   // 6-relay manual control state
   const [relayStatus, setRelayStatus] = useState<Record<string, string> | null>(null);
@@ -317,6 +355,71 @@ export default function Home() {
     const interval = setInterval(loadRelayHistory, 8000);
     return () => clearInterval(interval);
   }, [devices]);
+
+  // 🌾 Sync Active Crop Profile & Operational Mode from Backend
+  const loadActiveCrop = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/active-crop`);
+      if (res.ok) {
+        const d = await res.json();
+        if (d?.crop) {
+          setActiveCrop(d.crop);
+        }
+        if (d?.mode) {
+          setSystemMode(d.mode as "AUTO" | "MANUAL");
+        }
+      }
+    } catch (e) {
+      console.log("Could not load active crop from backend:", e);
+    }
+  };
+
+  useEffect(() => {
+    loadActiveCrop();
+    const interval = setInterval(loadActiveCrop, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleSwitchCrop = async (cropName: string) => {
+    setCropUpdating(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/devices/active-crop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cropName }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        if (d?.activeCrop) {
+          setActiveCrop(d.activeCrop);
+          setCropToast(`✅ Active Crop set to ${d.activeCrop.name}! Field thresholds updated.`);
+          setTimeout(() => setCropToast(null), 4000);
+        }
+      }
+      setCropSelectorOpen(false);
+      loadRelayHistory();
+    } catch (e) {
+      console.log("Error switching crop:", e);
+    } finally {
+      setCropUpdating(false);
+    }
+  };
+
+  const handleToggleMode = async (newMode: "AUTO" | "MANUAL") => {
+    setSystemMode(newMode);
+    try {
+      await fetch(`${API_BASE_URL}/devices/mode`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: newMode }),
+      });
+      loadRelayHistory();
+      setCropToast(`⚙️ Operating mode switched to ${newMode}`);
+      setTimeout(() => setCropToast(null), 3000);
+    } catch (e) {
+      console.log("Error setting mode:", e);
+    }
+  };
 
   const toggleRelay = async (relayName: string) => {
     const deviceId = devices[0]?.id;
@@ -924,6 +1027,263 @@ export default function Home() {
           animation: pulseAnim 1.4s infinite;
         }
 
+        /* ── AUTONOMOUS CROP CONTROLLER & THRESHOLD WIDGET ── */
+        .crop-autonomous-box {
+          background: rgba(10, 22, 16, 0.88);
+          border: 1px solid rgba(52, 211, 153, 0.35);
+          border-radius: 18px;
+          padding: 20px 22px;
+          margin-bottom: 22px;
+          backdrop-filter: blur(14px);
+          box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5), 0 0 20px rgba(16, 185, 129, 0.12);
+        }
+        .crop-auto-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 16px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          margin-bottom: 16px;
+        }
+        .crop-profile-main {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+        }
+        .crop-avatar-ring {
+          width: 48px;
+          height: 48px;
+          border-radius: 14px;
+          background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(6, 182, 212, 0.2));
+          border: 1px solid rgba(52, 211, 153, 0.4);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 26px;
+          box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+        }
+        .crop-eyebrow {
+          font-size: 10px;
+          font-weight: 800;
+          color: var(--mint);
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+          font-family: var(--font-mono);
+          margin-bottom: 3px;
+        }
+        .crop-active-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #fff;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .crop-switch-trigger {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--mint);
+          background: rgba(52, 211, 153, 0.15);
+          border: 1px solid rgba(52, 211, 153, 0.3);
+          border-radius: 8px;
+          padding: 4px 10px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .crop-switch-trigger:hover {
+          background: rgba(52, 211, 153, 0.28);
+          color: #fff;
+        }
+        .mode-toggle-group {
+          display: inline-flex;
+          background: rgba(0, 0, 0, 0.45);
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 12px;
+          padding: 4px;
+          gap: 4px;
+        }
+        .mode-btn {
+          font-size: 11.5px;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          padding: 7px 14px;
+          border-radius: 8px;
+          border: none;
+          cursor: pointer;
+          color: var(--text-muted);
+          background: transparent;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          transition: all 0.2s ease;
+        }
+        .mode-btn:hover {
+          color: #fff;
+        }
+        .mode-auto-active {
+          background: linear-gradient(135deg, #10b981, #059669);
+          color: #fff !important;
+          box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+        }
+        .mode-manual-active {
+          background: linear-gradient(135deg, #f59e0b, #d97706);
+          color: #fff !important;
+          box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
+        }
+        .mode-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: #fff;
+          box-shadow: 0 0 6px currentColor;
+          animation: pulseAnim 1.8s infinite;
+        }
+        .crop-dropdown-panel {
+          background: rgba(6, 14, 10, 0.96);
+          border: 1px solid rgba(52, 211, 153, 0.35);
+          border-radius: 14px;
+          padding: 16px;
+          margin-bottom: 16px;
+          animation: fadeIn 0.25s ease;
+        }
+        .crop-dropdown-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-sub);
+          margin-bottom: 12px;
+          text-transform: uppercase;
+        }
+        .crop-browse-link {
+          color: var(--mint);
+          text-decoration: none;
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .crop-options-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 10px;
+        }
+        @media(max-width: 820px) {
+          .crop-options-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media(max-width: 480px) {
+          .crop-options-grid { grid-template-columns: 1fr; }
+        }
+        .crop-option-card {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          border-radius: 10px;
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          color: #fff;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.2s;
+        }
+        .crop-option-card:hover {
+          background: rgba(52, 211, 153, 0.12);
+          border-color: rgba(52, 211, 153, 0.35);
+        }
+        .crop-option-card.is-selected {
+          background: rgba(52, 211, 153, 0.2);
+          border-color: var(--mint);
+        }
+        .c-opt-icon { font-size: 20px; }
+        .c-opt-name { font-size: 13px; font-weight: 700; color: #fff; }
+        .c-opt-desc { font-size: 10px; color: var(--text-sub); font-family: var(--font-mono); }
+        .crop-toast-banner {
+          background: rgba(16, 185, 129, 0.2);
+          border: 1px solid rgba(52, 211, 153, 0.4);
+          color: #fff;
+          font-size: 12px;
+          font-weight: 700;
+          padding: 8px 14px;
+          border-radius: 8px;
+          margin-bottom: 14px;
+          text-align: center;
+        }
+        .crop-thresholds-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 12px;
+        }
+        @media(max-width: 900px) {
+          .crop-thresholds-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media(max-width: 600px) {
+          .crop-thresholds-grid { grid-template-columns: 1fr; }
+        }
+        .threshold-pill {
+          background: rgba(255, 255, 255, 0.035);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 12px;
+          padding: 12px 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .th-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .th-lbl {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-muted);
+        }
+        .th-status-chip {
+          font-size: 9.5px;
+          font-weight: 800;
+          padding: 2px 7px;
+          border-radius: 20px;
+          letter-spacing: 0.5px;
+          font-family: var(--font-mono);
+        }
+        .chip-ok {
+          background: rgba(52, 211, 153, 0.16);
+          color: var(--mint);
+          border: 1px solid rgba(52, 211, 153, 0.35);
+        }
+        .chip-alert {
+          background: rgba(239, 68, 68, 0.2);
+          color: #f87171;
+          border: 1px solid rgba(239, 68, 68, 0.4);
+          animation: pulseAnim 1.5s infinite;
+        }
+        .chip-warn {
+          background: rgba(245, 158, 11, 0.2);
+          color: #fbbf24;
+          border: 1px solid rgba(245, 158, 11, 0.4);
+        }
+        .th-compare {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-family: var(--font-mono);
+        }
+        .th-live {
+          font-size: 13.5px;
+          font-weight: 800;
+          color: #fff;
+        }
+        .th-arrow {
+          font-size: 11px;
+          color: var(--text-sub);
+        }
+        .th-target {
+          font-size: 11px;
+          color: var(--mint);
+        }
+
         /* ── PRIMARY MASTER PUMP CONTROLLER BAR ── */
         .master-pump-container {
           display: flex; align-items: center; justify-content: space-between;
@@ -1406,6 +1766,190 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* ════════════════════════════════════════════════════════════
+                    AUTONOMOUS CROP PROFILE & CLOSED-LOOP CONTROLLER WIDGET
+                ════════════════════════════════════════════════════════════ */}
+                <div className="crop-autonomous-box">
+                  {/* Top Bar: Profile Title & Operating Mode Toggle */}
+                  <div className="crop-auto-header">
+                    <div className="crop-profile-main">
+                      <div className="crop-avatar-ring">
+                        {activeCrop?.name.toLowerCase().includes("tomato") ? "🍅" :
+                         activeCrop?.name.toLowerCase().includes("wheat") ? "🌾" :
+                         activeCrop?.name.toLowerCase().includes("potato") ? "🥔" :
+                         activeCrop?.name.toLowerCase().includes("chilli") ? "🌶️" :
+                         activeCrop?.name.toLowerCase().includes("cucumber") ? "🥒" :
+                         activeCrop?.name.toLowerCase().includes("rice") ? "🍚" : "🌱"}
+                      </div>
+                      <div>
+                        <div className="crop-eyebrow">FIELD SECTOR A · ACTIVE AGRONOMIC PROFILE</div>
+                        <div className="crop-active-title">
+                          {activeCrop?.name || "Tomato"}
+                          <button
+                            type="button"
+                            className="crop-switch-trigger"
+                            onClick={() => setCropSelectorOpen(!cropSelectorOpen)}
+                          >
+                            Switch Crop ▾
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mode Toggle Switch: AUTO vs MANUAL */}
+                    <div className="mode-toggle-group">
+                      <button
+                        type="button"
+                        className={`mode-btn ${systemMode === "AUTO" ? "mode-auto-active" : ""}`}
+                        onClick={() => handleToggleMode("AUTO")}
+                        title="Relays actuate automatically based on active crop threshold rules"
+                      >
+                        <span className="mode-dot"></span>
+                        AUTONOMOUS
+                      </button>
+                      <button
+                        type="button"
+                        className={`mode-btn ${systemMode === "MANUAL" ? "mode-manual-active" : ""}`}
+                        onClick={() => handleToggleMode("MANUAL")}
+                        title="Operator manually overrides all 6 relays"
+                      >
+                        MANUAL OVERRIDE
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Dropdown for quick crop switching */}
+                  {cropSelectorOpen && (
+                    <div className="crop-dropdown-panel">
+                      <div className="crop-dropdown-header">
+                        <span>Select Agronomic Target Profile</span>
+                        <Link href="/crop" className="crop-browse-link">Browse All 100+ Crops →</Link>
+                      </div>
+                      <div className="crop-options-grid">
+                        {[
+                          { name: "Tomato", icon: "🍅", desc: "Moist: 60-80% · N: 120" },
+                          { name: "Wheat", icon: "🌾", desc: "Moist: 45-65% · N: 100" },
+                          { name: "Potato", icon: "🥔", desc: "Moist: 60-80% · N: 120" },
+                          { name: "Chilli", icon: "🌶️", desc: "Moist: 55-75% · N: 100" },
+                          { name: "Cucumber", icon: "🥒", desc: "Moist: 70-85% · N: 150" },
+                          { name: "Rice", icon: "🍚", desc: "Moist: 80-95% · N: 100" },
+                          { name: "Cotton", icon: "🌿", desc: "Moist: 50-70% · N: 90" },
+                          { name: "Maize", icon: "🌽", desc: "Moist: 60-75% · N: 120" },
+                        ].map((c) => (
+                          <button
+                            key={c.name}
+                            type="button"
+                            className={`crop-option-card ${activeCrop?.name === c.name ? "is-selected" : ""}`}
+                            onClick={() => handleSwitchCrop(c.name)}
+                            disabled={cropUpdating}
+                          >
+                            <span className="c-opt-icon">{c.icon}</span>
+                            <div>
+                              <div className="c-opt-name">{c.name}</div>
+                              <div className="c-opt-desc">{c.desc}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {cropToast && (
+                    <div className="crop-toast-banner">{cropToast}</div>
+                  )}
+
+                  {/* Real-time Threshold Match Matrix */}
+                  <div className="crop-thresholds-grid">
+                    {/* 1. Moisture & Drip Line */}
+                    <div className="threshold-pill">
+                      <div className="th-top">
+                        <span className="th-lbl">🌱 Soil Moisture</span>
+                        <span className={`th-status-chip ${(latest?.soilMoisture ?? 0) < (activeCrop?.minMoisture ?? 60) ? "chip-alert" : "chip-ok"}`}>
+                          {(latest?.soilMoisture ?? 0) < (activeCrop?.minMoisture ?? 60) ? "DEFICIT (DRIP ON)" : "OPTIMAL"}
+                        </span>
+                      </div>
+                      <div className="th-compare">
+                        <span className="th-live">{latest?.soilMoisture ?? 0}%</span>
+                        <span className="th-arrow">➔</span>
+                        <span className="th-target">Target: {activeCrop?.minMoisture ?? 60}–{activeCrop?.maxMoisture ?? 80}%</span>
+                      </div>
+                    </div>
+
+                    {/* 2. Nitrogen Line */}
+                    <div className="threshold-pill">
+                      <div className="th-top">
+                        <span className="th-lbl">🧪 Nitrogen (N)</span>
+                        <span className={`th-status-chip ${(latest?.nitrogen ?? 0) < (activeCrop?.minNitrogen ?? 120) ? "chip-alert" : "chip-ok"}`}>
+                          {(latest?.nitrogen ?? 0) < (activeCrop?.minNitrogen ?? 120) ? "LOW (DOSING ON)" : "OPTIMAL"}
+                        </span>
+                      </div>
+                      <div className="th-compare">
+                        <span className="th-live">{latest?.nitrogen ?? 0} mg/kg</span>
+                        <span className="th-arrow">➔</span>
+                        <span className="th-target">Min: {activeCrop?.minNitrogen ?? 120} mg/kg</span>
+                      </div>
+                    </div>
+
+                    {/* 3. Phosphorus Line */}
+                    <div className="threshold-pill">
+                      <div className="th-top">
+                        <span className="th-lbl">⚗️ Phosphorus (P)</span>
+                        <span className={`th-status-chip ${(latest?.phosphorus ?? 0) < (activeCrop?.minPhosphorus ?? 80) ? "chip-alert" : "chip-ok"}`}>
+                          {(latest?.phosphorus ?? 0) < (activeCrop?.minPhosphorus ?? 80) ? "LOW (P-VALVE ON)" : "OPTIMAL"}
+                        </span>
+                      </div>
+                      <div className="th-compare">
+                        <span className="th-live">{latest?.phosphorus ?? 0} mg/kg</span>
+                        <span className="th-arrow">➔</span>
+                        <span className="th-target">Min: {activeCrop?.minPhosphorus ?? 80} mg/kg</span>
+                      </div>
+                    </div>
+
+                    {/* 4. Potassium Line */}
+                    <div className="threshold-pill">
+                      <div className="th-top">
+                        <span className="th-lbl">💎 Potassium (K)</span>
+                        <span className={`th-status-chip ${(latest?.potassium ?? 0) < (activeCrop?.minPotassium ?? 150) ? "chip-alert" : "chip-ok"}`}>
+                          {(latest?.potassium ?? 0) < (activeCrop?.minPotassium ?? 150) ? "LOW (K-VALVE ON)" : "OPTIMAL"}
+                        </span>
+                      </div>
+                      <div className="th-compare">
+                        <span className="th-live">{latest?.potassium ?? 0} mg/kg</span>
+                        <span className="th-arrow">➔</span>
+                        <span className="th-target">Min: {activeCrop?.minPotassium ?? 150} mg/kg</span>
+                      </div>
+                    </div>
+
+                    {/* 5. Temperature (Fan / Bulb) */}
+                    <div className="threshold-pill">
+                      <div className="th-top">
+                        <span className="th-lbl">🌡️ Temperature</span>
+                        <span className={`th-status-chip ${(latest?.temperature ?? 28) > (activeCrop?.maxTemp ?? 27) ? "chip-alert" : (latest?.temperature ?? 28) < (activeCrop?.minTemp ?? 18) ? "chip-warn" : "chip-ok"}`}>
+                          {(latest?.temperature ?? 28) > (activeCrop?.maxTemp ?? 27) ? "HIGH (FAN ON)" : (latest?.temperature ?? 28) < (activeCrop?.minTemp ?? 18) ? "LOW (LAMP ON)" : "STABLE"}
+                        </span>
+                      </div>
+                      <div className="th-compare">
+                        <span className="th-live">{latest?.temperature ?? 28}°C</span>
+                        <span className="th-arrow">➔</span>
+                        <span className="th-target">Target: {activeCrop?.minTemp ?? 18}–{activeCrop?.maxTemp ?? 27}°C</span>
+                      </div>
+                    </div>
+
+                    {/* 6. Soil pH */}
+                    <div className="threshold-pill">
+                      <div className="th-top">
+                        <span className="th-lbl">🧪 Substrate pH</span>
+                        <span className="th-status-chip chip-ok">OPTIMAL</span>
+                      </div>
+                      <div className="th-compare">
+                        <span className="th-live">6.50 pH</span>
+                        <span className="th-arrow">➔</span>
+                        <span className="th-target">Target: {activeCrop?.minPh ?? 6.0}–{activeCrop?.maxPh ?? 6.8}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Primary Master Drip Pump Controller */}
                 <div className="master-pump-container">
                   <div className="master-pump-info">
@@ -1428,12 +1972,54 @@ export default function Home() {
                 {/* 6 Relay Actuator Cards with 3D Tilt */}
                 <div className="relay-grid-container">
                   {[
-                    { key: "nitrogen", icon: "🧪", label: "Nitrogen Line", sub: "N fertilizer doser" },
-                    { key: "phosphorus", icon: "⚗️", label: "Phosphorus Line", sub: "P nutrient valve" },
-                    { key: "potassium", icon: "💎", label: "Potassium Line", sub: "K enrichment feed" },
-                    { key: "water", icon: "🚿", label: "Drip Supply", sub: "Main water line" },
-                    { key: "fan", icon: "🌀", label: "Exhaust Fan", sub: "Canopy cooling unit" },
-                    { key: "bulb", icon: "💡", label: "Growth Lighting", sub: "Photosynthesis bulb" },
+                    {
+                      key: "nitrogen",
+                      icon: "🧪",
+                      label: "Nitrogen Line",
+                      sub: systemMode === "AUTO"
+                        ? (relayStatus?.nitrogen === "ON" ? "Auto: Dosing valve active" : "Auto: N nutrient optimal")
+                        : "N fertilizer doser",
+                    },
+                    {
+                      key: "phosphorus",
+                      icon: "⚗️",
+                      label: "Phosphorus Line",
+                      sub: systemMode === "AUTO"
+                        ? (relayStatus?.phosphorus === "ON" ? "Auto: P nutrient valve active" : "Auto: P nutrient optimal")
+                        : "P nutrient valve",
+                    },
+                    {
+                      key: "potassium",
+                      icon: "💎",
+                      label: "Potassium Line",
+                      sub: systemMode === "AUTO"
+                        ? (relayStatus?.potassium === "ON" ? "Auto: K nutrient valve active" : "Auto: K nutrient optimal")
+                        : "K enrichment feed",
+                    },
+                    {
+                      key: "water",
+                      icon: "🚿",
+                      label: "Drip Supply",
+                      sub: systemMode === "AUTO"
+                        ? (relayStatus?.water === "ON" ? "Auto: Deficit irrigation flowing" : "Auto: Soil moisture satisfied")
+                        : "Main water line",
+                    },
+                    {
+                      key: "fan",
+                      icon: "🌀",
+                      label: "Exhaust Fan",
+                      sub: systemMode === "AUTO"
+                        ? (relayStatus?.fan === "ON" ? "Auto: Canopy cooling active" : "Auto: Temperature nominal")
+                        : "Canopy cooling unit",
+                    },
+                    {
+                      key: "bulb",
+                      icon: "💡",
+                      label: "Growth Lighting",
+                      sub: systemMode === "AUTO"
+                        ? (relayStatus?.bulb === "ON" ? "Auto: Growth heat lamp active" : "Auto: Thermal conditions nominal")
+                        : "Photosynthesis bulb",
+                    },
                   ].map((r) => {
                     const isOn = relayStatus?.[r.key] === "ON";
                     const isLoading = relayLoadingKey === r.key;
@@ -1456,7 +2042,11 @@ export default function Home() {
                         </div>
                         <div className="relay-state-capsule">
                           <span className="relay-capsule-dot"></span>
-                          {isLoading ? "SYNC..." : isOn ? "ON" : "OFF"}
+                          {isLoading
+                            ? "SYNC..."
+                            : systemMode === "AUTO"
+                            ? (isOn ? "AUTO ON" : "AUTO OFF")
+                            : (isOn ? "ON" : "OFF")}
                         </div>
                       </button>
                     );

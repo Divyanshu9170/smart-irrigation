@@ -234,4 +234,310 @@ export class DevicesService {
 
     return current;
   }
+
+  // 🌾 GET ACTIVE CROP PROFILE & OPERATING MODE
+  async getActiveCrop(deviceId: string = 'ESP32-0001') {
+    let device = await this.deviceRepository.findOne({
+      where: { deviceId },
+      relations: ['crop'],
+    });
+
+    if (!device) {
+      device = await this.deviceRepository.findOne({
+        relations: ['crop'],
+      });
+    }
+
+    if (!device) {
+      // Find or seed default crop
+      let defaultCrop = await this.cropRepository.findOne({ where: { name: 'Tomato' } });
+      if (!defaultCrop) {
+        defaultCrop = await this.cropRepository.findOne({});
+      }
+      return {
+        deviceId,
+        mode: 'AUTO',
+        crop: defaultCrop,
+        relays: this.getRelaysForDevice(deviceId),
+      };
+    }
+
+    if (!device.crop) {
+      const defaultCrop = await this.cropRepository.findOne({ where: { name: 'Tomato' } });
+      if (defaultCrop) {
+        device.crop = defaultCrop;
+        await this.deviceRepository.save(device);
+      }
+    }
+
+    return {
+      deviceId: device.deviceId,
+      mode: device.mode || 'AUTO',
+      crop: device.crop,
+      relays: this.getRelaysForDevice(device.deviceId),
+    };
+  }
+
+  // 🌾 SET ACTIVE CROP PROFILE FOR FARM
+  async setActiveCrop(cropIdOrName: number | string, deviceId: string = 'ESP32-0001') {
+    let crop: Crop | null = null;
+    if (typeof cropIdOrName === 'number' || !isNaN(Number(cropIdOrName))) {
+      crop = await this.cropRepository.findOne({ where: { id: Number(cropIdOrName) } });
+    }
+    if (!crop && typeof cropIdOrName === 'string') {
+      crop = await this.cropRepository.findOne({ where: { name: cropIdOrName } });
+    }
+
+    if (!crop) {
+      throw new NotFoundException(`Crop "${cropIdOrName}" not found`);
+    }
+
+    let device = await this.deviceRepository.findOne({
+      where: { deviceId },
+      relations: ['crop'],
+    });
+
+    if (!device) {
+      device = await this.deviceRepository.findOne({
+        relations: ['crop'],
+      });
+    }
+
+    if (!device) {
+      device = this.deviceRepository.create({
+        deviceId,
+        name: 'Smart Irrigation Node 1',
+        location: 'Field Sector A',
+        mode: 'AUTO',
+        crop,
+      });
+    } else {
+      device.crop = crop;
+    }
+
+    const savedDevice = await this.deviceRepository.save(device);
+
+    await this.autoActionRepository.save({
+      deviceId: savedDevice.id,
+      action: `[SYSTEM] Active crop set to ${crop.name}. Agronomic thresholds loaded: Moisture(${crop.minMoisture}-${crop.maxMoisture}%), N(${crop.minNitrogen}), P(${crop.minPhosphorus}), K(${crop.minPotassium})`,
+      createdAt: new Date(),
+    });
+
+    console.log(`🌾 Active Crop updated to: ${crop.name} for ${deviceId}`);
+    return {
+      ok: true,
+      deviceId: savedDevice.deviceId,
+      mode: savedDevice.mode,
+      activeCrop: crop,
+    };
+  }
+
+  // ⚙️ TOGGLE AUTO VS MANUAL MODE
+  async setDeviceMode(mode: 'AUTO' | 'MANUAL', deviceId: string = 'ESP32-0001') {
+    let device = await this.deviceRepository.findOne({
+      where: { deviceId },
+    });
+
+    if (!device) {
+      device = await this.deviceRepository.findOne({});
+    }
+
+    if (device) {
+      device.mode = mode;
+      await this.deviceRepository.save(device);
+      await this.autoActionRepository.save({
+        deviceId: device.id,
+        action: `[SYSTEM] Operating mode changed to ${mode}`,
+        createdAt: new Date(),
+      });
+    }
+
+    console.log(`⚙️ Operating mode set to ${mode} for ${deviceId}`);
+    return {
+      ok: true,
+      mode,
+    };
+  }
+
+  // 🧠 AUTONOMOUS CROP THRESHOLD EVALUATION ENGINE
+  async evaluateAutonomousCropRules(
+    deviceId: string,
+    readings: {
+      temperature: number;
+      humidity: number;
+      soilMoisture: number;
+      nitrogen: number;
+      phosphorus: number;
+      potassium: number;
+      ph: number;
+    },
+  ): Promise<Record<string, 'ON' | 'OFF'>> {
+    let device = await this.deviceRepository.findOne({
+      where: { deviceId },
+      relations: ['crop'],
+    });
+
+    if (!device) {
+      device = await this.deviceRepository.findOne({
+        relations: ['crop'],
+      });
+    }
+
+    const current = this.getRelaysForDevice(deviceId);
+
+    if (!device) {
+      return current;
+    }
+
+    // If device is in MANUAL mode, skip automatic threshold overrides
+    if (device.mode === 'MANUAL') {
+      return current;
+    }
+
+    // Ensure crop profile exists
+    if (!device.crop) {
+      const defaultCrop = await this.cropRepository.findOne({
+        where: { name: 'Tomato' },
+      });
+      if (defaultCrop) {
+        device.crop = defaultCrop;
+        await this.deviceRepository.save(device);
+      } else {
+        return current;
+      }
+    }
+
+    const crop = device.crop;
+    const actionsToLog: string[] = [];
+
+    // 1. Water (Soil Moisture)
+    if (readings.soilMoisture < crop.minMoisture) {
+      if (current.water !== 'ON') {
+        current.water = 'ON';
+        device.pumpStatus = 'ON';
+        actionsToLog.push(
+          `[AUTO] Water Pump ON: Soil moisture ${readings.soilMoisture}% < min ${crop.minMoisture}% (${crop.name})`,
+        );
+      }
+    } else if (readings.soilMoisture >= (crop.maxMoisture || (crop.minMoisture + 10))) {
+      if (current.water !== 'OFF') {
+        current.water = 'OFF';
+        device.pumpStatus = 'OFF';
+        actionsToLog.push(
+          `[AUTO] Water Pump OFF: Soil moisture ${readings.soilMoisture}% reached target (${crop.name})`,
+        );
+      }
+    }
+
+    // 2. Nitrogen (N Line)
+    if (readings.nitrogen < crop.minNitrogen) {
+      if (current.nitrogen !== 'ON') {
+        current.nitrogen = 'ON';
+        actionsToLog.push(
+          `[AUTO] Nitrogen Valve ON: N ${readings.nitrogen} mg/kg < min ${crop.minNitrogen} mg/kg (${crop.name})`,
+        );
+      }
+    } else {
+      if (current.nitrogen !== 'OFF') {
+        current.nitrogen = 'OFF';
+        actionsToLog.push(
+          `[AUTO] Nitrogen Valve OFF: N level satisfied (${crop.name})`,
+        );
+      }
+    }
+
+    // 3. Phosphorus (P Line)
+    if (readings.phosphorus < crop.minPhosphorus) {
+      if (current.phosphorus !== 'ON') {
+        current.phosphorus = 'ON';
+        actionsToLog.push(
+          `[AUTO] Phosphorus Valve ON: P ${readings.phosphorus} mg/kg < min ${crop.minPhosphorus} mg/kg (${crop.name})`,
+        );
+      }
+    } else {
+      if (current.phosphorus !== 'OFF') {
+        current.phosphorus = 'OFF';
+        actionsToLog.push(
+          `[AUTO] Phosphorus Valve OFF: P level satisfied (${crop.name})`,
+        );
+      }
+    }
+
+    // 4. Potassium (K Line)
+    if (readings.potassium < crop.minPotassium) {
+      if (current.potassium !== 'ON') {
+        current.potassium = 'ON';
+        actionsToLog.push(
+          `[AUTO] Potassium Valve ON: K ${readings.potassium} mg/kg < min ${crop.minPotassium} mg/kg (${crop.name})`,
+        );
+      }
+    } else {
+      if (current.potassium !== 'OFF') {
+        current.potassium = 'OFF';
+        actionsToLog.push(
+          `[AUTO] Potassium Valve OFF: K level satisfied (${crop.name})`,
+        );
+      }
+    }
+
+    // 5. Fan (Cooling)
+    if (readings.temperature > crop.maxTemp) {
+      if (current.fan !== 'ON') {
+        current.fan = 'ON';
+        actionsToLog.push(
+          `[AUTO] Exhaust Fan ON: Temp ${readings.temperature}°C > max ${crop.maxTemp}°C (${crop.name})`,
+        );
+      }
+    } else {
+      if (current.fan !== 'OFF') {
+        current.fan = 'OFF';
+        actionsToLog.push(
+          `[AUTO] Exhaust Fan OFF: Temp stabilized (${crop.name})`,
+        );
+      }
+    }
+
+    // 6. Growth Bulb / Heater
+    if (readings.temperature < crop.minTemp) {
+      if (current.bulb !== 'ON') {
+        current.bulb = 'ON';
+        actionsToLog.push(
+          `[AUTO] Growth Lamp ON: Temp ${readings.temperature}°C < min ${crop.minTemp}°C (${crop.name})`,
+        );
+      }
+    } else {
+      if (current.bulb !== 'OFF') {
+        current.bulb = 'OFF';
+        actionsToLog.push(
+          `[AUTO] Growth Lamp OFF: Temp adequate (${crop.name})`,
+        );
+      }
+    }
+
+    // Log changes to AutoActions database table
+    if (actionsToLog.length > 0) {
+      await this.deviceRepository.save(device);
+      for (const logText of actionsToLog) {
+        await this.autoActionRepository.save({
+          deviceId: device.id,
+          action: logText,
+          createdAt: new Date(),
+        });
+        console.log(`🤖 ${logText}`);
+      }
+
+      // Forward to physical ESP32 if IP registered
+      const espIp = this.deviceIps[device.deviceId];
+      if (espIp) {
+        fetch(`http://${espIp}:80/relay-sync`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(current),
+          signal: AbortSignal.timeout(2000),
+        }).catch(() => {});
+      }
+    }
+
+    return current;
+  }
 }

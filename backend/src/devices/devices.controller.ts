@@ -97,6 +97,25 @@ export class DevicesController {
     return this.devicesService.findAllForUser(req.user.id);
   }
 
+  // 🌾 Get active crop profile and current operational mode
+  @Get('active-crop')
+  getActiveCrop() {
+    return this.devicesService.getActiveCrop();
+  }
+
+  // 🌾 Set active crop profile (Tomato, Wheat, Potato, etc.)
+  @Post('active-crop')
+  setActiveCrop(@Body() body: { cropId?: number; cropName?: string; deviceId?: string }) {
+    const target = body?.cropId || body?.cropName || 'Tomato';
+    return this.devicesService.setActiveCrop(target, body?.deviceId);
+  }
+
+  // ⚙️ Set system operational mode (AUTO vs MANUAL)
+  @Post('mode')
+  setMode(@Body() body: { mode: 'AUTO' | 'MANUAL'; deviceId?: string }) {
+    return this.devicesService.setDeviceMode(body?.mode || 'AUTO', body?.deviceId);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post(':id/pump')
   setPump(
