@@ -73,9 +73,7 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // 3D Canvas Refs & Interactive State
-  const bannerCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
 
   // Local file upload AI analysis
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -505,170 +503,7 @@ export default function Home() {
 
   const pumpActive = devices[0]?.pumpStatus === "ON";
 
-  // ════════════════════════════════════════════════════════════════
-  // 3D REAL-TIME INTERACTIVE CANVAS ENGINE (HERO BANNER)
-  // ════════════════════════════════════════════════════════════════
-  useEffect(() => {
-    const canvas = bannerCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
 
-    let animId: number;
-    let width = (canvas.width = canvas.parentElement?.clientWidth || window.innerWidth);
-    let height = (canvas.height = canvas.parentElement?.clientHeight || 450);
-
-    const handleResize = () => {
-      if (!canvas.parentElement) return;
-      width = canvas.width = canvas.parentElement.clientWidth;
-      height = canvas.height = canvas.parentElement.clientHeight;
-    };
-    window.addEventListener("resize", handleResize);
-
-    // 3D Point Generation (Agricultural IoT Mesh)
-    const points: { x: number; y: number; z: number; ox: number; oy: number; oz: number; pulse: number }[] = [];
-    const rows = 14;
-    const cols = 22;
-    const spacingX = width / (cols - 1);
-    const spacingZ = 45;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const x = (c - cols / 2) * spacingX * 0.9;
-        const z = (r - rows / 2) * spacingZ;
-        const y = Math.sin(c * 0.4) * 35 + Math.cos(r * 0.3) * 25 + 80;
-        points.push({ x, y, z, ox: x, oy: y, oz: z, pulse: Math.random() * Math.PI });
-      }
-    }
-
-    let targetRotY = 0;
-    let targetRotX = 0.28;
-    let rotY = 0;
-    let rotX = 0.28;
-    let time = 0;
-
-    const render = () => {
-      time += 0.02;
-      rotY += (targetRotY - rotY) * 0.05;
-      rotX += (targetRotX - rotX) * 0.05;
-
-      ctx.clearRect(0, 0, width, height);
-
-      const cx = width / 2;
-      const cy = height * 0.62;
-      const fov = 380;
-
-      // Project and draw 3D Grid
-      const projected: { px: number; py: number; scale: number; alpha: number }[] = [];
-
-      for (let i = 0; i < points.length; i++) {
-        const p = points[i];
-        p.pulse += 0.03;
-        const wave = Math.sin(time + p.ox * 0.008 + p.oz * 0.015) * 24;
-        const curY = p.oy + wave;
-
-        // 3D Rotation
-        const cosY = Math.cos(rotY);
-        const sinY = Math.sin(rotY);
-        const cosX = Math.cos(rotX);
-        const sinX = Math.sin(rotX);
-
-        // Yaw
-        const x1 = p.ox * cosY - p.oz * sinY;
-        const z1 = p.ox * sinY + p.oz * cosY;
-
-        // Pitch
-        const y2 = curY * cosX - z1 * sinX;
-        const z2 = curY * sinX + z1 * cosX + 320;
-
-        if (z2 > 10) {
-          const scale = fov / z2;
-          const px = cx + x1 * scale;
-          const py = cy + y2 * scale;
-          const alpha = Math.max(0.08, Math.min(0.65, (scale - 0.3) * 0.8));
-          projected.push({ px, py, scale, alpha });
-        } else {
-          projected.push({ px: -999, py: -999, scale: 0, alpha: 0 });
-        }
-      }
-
-      // Draw 3D Lines
-      ctx.lineWidth = 1;
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const idx = r * cols + c;
-          const cur = projected[idx];
-          if (cur.px < -100) continue;
-
-          // Connect horizontally
-          if (c < cols - 1) {
-            const right = projected[idx + 1];
-            if (right.px > -100) {
-              ctx.strokeStyle = `rgba(16, 185, 129, ${cur.alpha * 0.35})`;
-              ctx.beginPath();
-              ctx.moveTo(cur.px, cur.py);
-              ctx.lineTo(right.px, right.py);
-              ctx.stroke();
-            }
-          }
-
-          // Connect vertically
-          if (r < rows - 1) {
-            const down = projected[idx + cols];
-            if (down.px > -100) {
-              ctx.strokeStyle = `rgba(6, 182, 212, ${cur.alpha * 0.28})`;
-              ctx.beginPath();
-              ctx.moveTo(cur.px, cur.py);
-              ctx.lineTo(down.px, down.py);
-              ctx.stroke();
-            }
-          }
-
-          // Draw Glowing 3D Node
-          if ((r + c) % 3 === 0) {
-            const glow = (Math.sin(points[idx].pulse) + 1) * 0.5;
-            const rSize = Math.max(1.5, cur.scale * (2 + glow * 1.5));
-            ctx.fillStyle = `rgba(52, 211, 153, ${cur.alpha * (0.5 + glow * 0.5)})`;
-            ctx.beginPath();
-            ctx.arc(cur.px, cur.py, rSize, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-
-      animId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      const nx = (e.clientX - rect.left) / width - 0.5;
-      const ny = (e.clientY - rect.top) / height - 0.5;
-      targetRotY = nx * 0.45;
-      targetRotX = 0.28 + ny * 0.2;
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (!e.touches[0] || !canvas) return;
-      const touch = e.touches[0];
-      const rect = canvas.getBoundingClientRect();
-      const nx = (touch.clientX - rect.left) / width - 0.5;
-      const ny = (touch.clientY - rect.top) / height - 0.5;
-      targetRotY = nx * 0.45;
-      targetRotX = 0.28 + ny * 0.2;
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("touchmove", handleTouchMove, { passive: true });
-
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("touchmove", handleTouchMove);
-    };
-  }, []);
 
   // 3D Card Hover Perspective Handler (guards mobile touch devices)
   const handleCardTilt = (e: React.MouseEvent<HTMLElement>) => {
@@ -839,147 +674,15 @@ export default function Home() {
            FULL TOP BANNER AREA FOR THE PROJECT NAME (WITH 3D CANVAS)
         ══════════════════════════════════════════════════════════════ */
         .project-full-banner {
-          position: relative; width: 100%; min-height: 480px; overflow: hidden;
-          background: linear-gradient(180deg, rgba(3, 14, 10, 0.82) 0%, rgba(2, 8, 6, 0.94) 100%), url('/farm/hero-field.jpg') center/cover no-repeat;
+          position: relative; width: 100%; min-height: 460px; overflow: hidden;
+          background: linear-gradient(180deg, rgba(6, 20, 14, 0.68) 0%, rgba(4, 12, 10, 0.88) 100%), url('/farm/hero-field.jpg') center/cover no-repeat;
           border-bottom: 1px solid rgba(52,211,153,0.3);
           display: flex; align-items: center; justify-content: center;
           padding: 60px 24px; text-align: center;
         }
-        .banner-3d-canvas {
-          position: absolute; inset: 0; width: 100%; height: 100%;
-          pointer-events: none; z-index: 1;
-        }
         .banner-inner-content {
           position: relative; z-index: 2; max-width: 1080px; width: 100%; margin: 0 auto;
           display: flex; flex-direction: column; align-items: center;
-        }
-
-        /* ── LIVING NATURE FARM ZONES & CROP ECOSYSTEM ── */
-        .nature-zones-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 18px;
-          margin-bottom: 34px;
-        }
-        .nature-card {
-          background: rgba(14, 26, 20, 0.78);
-          border: 1px solid rgba(52, 211, 153, 0.2);
-          border-radius: 18px;
-          overflow: hidden;
-          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-          display: flex;
-          flex-direction: column;
-          box-shadow: 0 10px 24px -10px rgba(0, 0, 0, 0.5);
-          backdrop-filter: blur(12px);
-        }
-        .nature-card:hover {
-          transform: translateY(-5px);
-          border-color: rgba(52, 211, 153, 0.45);
-          box-shadow: 0 16px 36px -10px rgba(16, 185, 129, 0.28);
-        }
-        .nature-card-img-wrap {
-          position: relative;
-          width: 100%;
-          height: 145px;
-          overflow: hidden;
-        }
-        .nature-card-img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          transition: transform 0.45s ease;
-        }
-        .nature-card:hover .nature-card-img {
-          transform: scale(1.08);
-        }
-        .nature-badge-float {
-          position: absolute;
-          bottom: 10px;
-          left: 10px;
-          background: rgba(4, 14, 10, 0.88);
-          backdrop-filter: blur(8px);
-          border: 1px solid rgba(255, 255, 255, 0.16);
-          color: #fff;
-          font-size: 11px;
-          font-weight: 700;
-          padding: 3.5px 9px;
-          border-radius: 8px;
-          display: flex;
-          align-items: center;
-          gap: 4px;
-        }
-        .nature-status-pill {
-          position: absolute;
-          top: 10px;
-          right: 10px;
-          background: rgba(4, 14, 10, 0.88);
-          backdrop-filter: blur(8px);
-          border: 1px solid rgba(52, 211, 153, 0.3);
-          color: var(--mint);
-          font-size: 10.5px;
-          font-weight: 700;
-          padding: 2.5px 8.5px;
-          border-radius: 20px;
-        }
-        .nature-card-body {
-          padding: 14px 16px;
-          display: flex;
-          flex-direction: column;
-          flex: 1;
-        }
-        .nature-card-title {
-          font-size: 14px;
-          font-weight: 800;
-          color: #fff;
-          margin-bottom: 4px;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .nature-card-sub {
-          font-size: 11.5px;
-          color: var(--text-muted);
-          line-height: 1.45;
-          margin-bottom: 12px;
-          flex: 1;
-        }
-        .nature-stats-row {
-          display: flex;
-          gap: 8px;
-          padding-top: 10px;
-          border-top: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        .nature-stat-chip {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-        }
-        .nature-stat-chip .n-lbl {
-          font-size: 9.5px;
-          color: var(--text-sub);
-          text-transform: uppercase;
-          font-family: var(--font-mono);
-          letter-spacing: 0.5px;
-        }
-        .nature-stat-chip .n-val {
-          font-size: 13.5px;
-          font-weight: 800;
-          color: #fff;
-          font-family: var(--font-mono);
-        }
-        .relay-thumb-img {
-          width: 38px;
-          height: 38px;
-          border-radius: 9px;
-          object-fit: cover;
-          border: 1px solid rgba(255,255,255,0.15);
-          flex-shrink: 0;
-        }
-        @media(max-width: 1080px) {
-          .nature-zones-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media(max-width: 600px) {
-          .nature-zones-grid { grid-template-columns: 1fr; }
         }
 
         .academic-capstone-tag {
@@ -1549,9 +1252,6 @@ export default function Home() {
             FULL BANNER AREA FOR THE PROJECT NAME (WITH 3D CANVAS)
         ════════════════════════════════════════════════════════════ */}
         <section className="project-full-banner" id="system-overview">
-          {/* Real-time 3D Agricultural WebGL/Canvas Animation Engine */}
-          <canvas ref={bannerCanvasRef} className="banner-3d-canvas" />
-
           <div className="banner-inner-content">
             <div className="academic-capstone-tag">
               <span>🎓</span> Final Year B.Tech Presentation · IoT Precision Agriculture
@@ -1622,116 +1322,6 @@ export default function Home() {
               <span>⚠️</span> {error}
             </div>
           )}
-
-          {/* ════════════════════════════════════════════════════════════
-              LIVING FARM ECOSYSTEM & ACTIVE FIELD SECTORS
-          ════════════════════════════════════════════════════════════ */}
-          <div className="section-header" style={{ marginTop: 4 }}>
-            <div className="sec-title-group">
-              <span className="sec-label">Agricultural Field Topology</span>
-              <h2 className="sec-h2">Living Farm Ecosystem &amp; Crops</h2>
-              <div className="sec-desc">Real-time status across active field zones, automated irrigation lines, and living soil</div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--mint)", fontFamily: "var(--font-mono)", fontWeight: 700 }}>
-              <span className="pulse-dot"></span> 4 Zones Synchronized
-            </div>
-          </div>
-
-          <div className="nature-zones-grid">
-            {/* Zone 1: Field Crops */}
-            <div className="nature-card" onMouseMove={handleCardTilt} onMouseLeave={handleCardReset}>
-              <div className="nature-card-img-wrap">
-                <img src="/farm/hero-field.jpg" alt="Lush Farm Field" className="nature-card-img" />
-                <div className="nature-badge-float">🌾 Sector A · Crop Field</div>
-                <div className="nature-status-pill">● Thriving</div>
-              </div>
-              <div className="nature-card-body">
-                <div className="nature-card-title">Canopy Growth &amp; Grains</div>
-                <div className="nature-card-sub">Lush green crop rows with natural sunlight &amp; gentle canopy aeration.</div>
-                <div className="nature-stats-row">
-                  <div className="nature-stat-chip">
-                    <span className="n-lbl">Soil Moisture</span>
-                    <span className="n-val">{latest?.soilMoisture ?? 55}%</span>
-                  </div>
-                  <div className="nature-stat-chip">
-                    <span className="n-lbl">Canopy Temp</span>
-                    <span className="n-val">{latest?.temperature ?? 26.5}°C</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Zone 2: Water & Irrigation */}
-            <div className="nature-card" onMouseMove={handleCardTilt} onMouseLeave={handleCardReset}>
-              <div className="nature-card-img-wrap">
-                <img src="/farm/water-droplet.jpg" alt="Smart Drip Irrigation" className="nature-card-img" />
-                <div className="nature-badge-float">💧 Sector B · Drip Line</div>
-                <div className="nature-status-pill" style={{ color: pumpActive ? "var(--mint)" : "#94a3b8" }}>
-                  ● {pumpActive ? "Pump Active" : "Standby"}
-                </div>
-              </div>
-              <div className="nature-card-body">
-                <div className="nature-card-title">Precision Drip Hydration</div>
-                <div className="nature-card-sub">Pure water delivery directly to root zones without runoff waste.</div>
-                <div className="nature-stats-row">
-                  <div className="nature-stat-chip">
-                    <span className="n-lbl">Water Status</span>
-                    <span className="n-val" style={{ color: pumpActive ? "var(--mint)" : "#94a3b8" }}>{pumpActive ? "FLOWING" : "IDLE"}</span>
-                  </div>
-                  <div className="nature-stat-chip">
-                    <span className="n-lbl">Humidity</span>
-                    <span className="n-val">{latest?.humidity ?? 60}%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Zone 3: Fertile Soil & Seedling */}
-            <div className="nature-card" onMouseMove={handleCardTilt} onMouseLeave={handleCardReset}>
-              <div className="nature-card-img-wrap">
-                <img src="/farm/seedling-soil.jpg" alt="Living Soil & Seedling" className="nature-card-img" />
-                <div className="nature-badge-float">🌱 Sector C · Living Soil</div>
-                <div className="nature-status-pill">● Nutrient Rich</div>
-              </div>
-              <div className="nature-card-body">
-                <div className="nature-card-title">Root Zone &amp; Soil Chemistry</div>
-                <div className="nature-card-sub">Living organic substrate enriched with Nitrogen, Phosphorus &amp; Potassium.</div>
-                <div className="nature-stats-row">
-                  <div className="nature-stat-chip">
-                    <span className="n-lbl">Soil pH</span>
-                    <span className="n-val" style={{ color: "var(--mint)" }}>6.5 pH</span>
-                  </div>
-                  <div className="nature-stat-chip">
-                    <span className="n-lbl">NPK Total</span>
-                    <span className="n-val">{Math.round((latest?.nitrogen ?? 0) + (latest?.phosphorus ?? 0) + (latest?.potassium ?? 0))} mg/kg</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Zone 4: Orchard & Trees */}
-            <div className="nature-card" onMouseMove={handleCardTilt} onMouseLeave={handleCardReset}>
-              <div className="nature-card-img-wrap">
-                <img src="/farm/smart-orchard.jpg" alt="Natural Orchard & Canopy" className="nature-card-img" />
-                <div className="nature-badge-float">🌳 Sector D · Orchard &amp; Trees</div>
-                <div className="nature-status-pill">● Stable Climate</div>
-              </div>
-              <div className="nature-card-body">
-                <div className="nature-card-title">Canopy &amp; Microclimate Shield</div>
-                <div className="nature-card-sub">Tree windbreaks and natural shade regulating greenhouse microclimate.</div>
-                <div className="nature-stats-row">
-                  <div className="nature-stat-chip">
-                    <span className="n-lbl">Cooling Fan</span>
-                    <span className="n-val">{relayStatus?.fan === "ON" ? "ON" : "OFF"}</span>
-                  </div>
-                  <div className="nature-stat-chip">
-                    <span className="n-lbl">Leaf Health</span>
-                    <span className="n-val" style={{ color: "var(--mint)" }}>OPTIMAL</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* ════════════════════════════════════════════════════════════
               LIVE SENSOR MONITORING (7 SENSORS WITH 3D TILT EFFECT)
@@ -1835,15 +1425,15 @@ export default function Home() {
                   </button>
                 </div>
 
-                {/* 6 Relay Actuator Cards with Nature Imagery & 3D Tilt */}
+                {/* 6 Relay Actuator Cards with 3D Tilt */}
                 <div className="relay-grid-container">
                   {[
-                    { key: "water", icon: "🚿", label: "Drip Supply", sub: "Main water line", img: "/farm/water-droplet.jpg" },
-                    { key: "nitrogen", icon: "🧪", label: "Nitrogen Line", sub: "N fertilizer doser", img: "/farm/seedling-soil.jpg" },
-                    { key: "phosphorus", icon: "⚗️", label: "Phosphorus Line", sub: "P nutrient valve", img: "/farm/nature-crops.jpg" },
-                    { key: "potassium", icon: "💎", label: "Potassium Line", sub: "K enrichment feed", img: "/farm/hero-field.jpg" },
-                    { key: "fan", icon: "🌀", label: "Exhaust Fan", sub: "Canopy cooling unit", img: "/farm/smart-orchard.jpg" },
-                    { key: "bulb", icon: "💡", label: "Growth Lighting", sub: "Photosynthesis bulb", img: "/farm/nature-crops.jpg" },
+                    { key: "nitrogen", icon: "🧪", label: "Nitrogen Line", sub: "N fertilizer doser" },
+                    { key: "phosphorus", icon: "⚗️", label: "Phosphorus Line", sub: "P nutrient valve" },
+                    { key: "potassium", icon: "💎", label: "Potassium Line", sub: "K enrichment feed" },
+                    { key: "water", icon: "🚿", label: "Drip Supply", sub: "Main water line" },
+                    { key: "fan", icon: "🌀", label: "Exhaust Fan", sub: "Canopy cooling unit" },
+                    { key: "bulb", icon: "💡", label: "Growth Lighting", sub: "Photosynthesis bulb" },
                   ].map((r) => {
                     const isOn = relayStatus?.[r.key] === "ON";
                     const isLoading = relayLoadingKey === r.key;
@@ -1858,7 +1448,7 @@ export default function Home() {
                         type="button"
                       >
                         <div className="relay-info-side">
-                          <img src={r.img} alt={r.label} className="relay-thumb-img" />
+                          <div className="relay-icon-avatar">{r.icon}</div>
                           <div>
                             <div className="relay-name-label">{r.label}</div>
                             <div className="relay-purpose-sub">{r.sub}</div>
@@ -2255,18 +1845,7 @@ export default function Home() {
                   </div>
                   <div className="filmstrip-grid">
                     {images.length === 0
-                      ? [
-                          { img: "/farm/nature-crops.jpg", name: "Lush Green Canopy" },
-                          { img: "/farm/seedling-soil.jpg", name: "Living Seedling & Soil" },
-                          { img: "/farm/water-droplet.jpg", name: "Drip Hydration Leaf" },
-                          { img: "/farm/smart-orchard.jpg", name: "Canopy Foliage" },
-                          { img: "/farm/hero-field.jpg", name: "Open Field Vista" },
-                          { img: "/farm/nature-crops.jpg", name: "Crop Foliage Health" },
-                        ].map((ref, i) => (
-                          <div className="filmstrip-thumb" key={i} title={ref.name}>
-                            <img src={ref.img} alt={ref.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 8 }} />
-                          </div>
-                        ))
+                      ? [...Array(6)].map((_, i) => <div key={i} className="filmstrip-empty">Frame {i+1}</div>)
                       : images.slice(0, 6).map((img, i) => (
                         <div className="filmstrip-thumb" key={i} title={`Frame ${i+1}`}>
                           <img src={img.url} alt={`Snapshot ${i+1}`} />
