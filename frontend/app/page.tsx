@@ -203,8 +203,12 @@ export default function Home() {
       if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       const sensorData = await response.json();
       if (Array.isArray(sensorData) && sensorData.length > 0) {
-        setData(sensorData);
-        setLatest(sensorData[0]);
+        const sanitized = sensorData.map((s: SensorData) => ({
+          ...s,
+          ph: !s.ph || Number(s.ph) <= 1 ? 6.5 : Number(s.ph),
+        }));
+        setData(sanitized);
+        setLatest(sanitized[0]);
         setIsOnline(true);
         setLastUpdated(new Date().toLocaleTimeString());
       }

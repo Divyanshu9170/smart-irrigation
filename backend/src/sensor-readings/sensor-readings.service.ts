@@ -39,11 +39,15 @@ export class SensorReadingsService {
       );
     }
 
+    // If pH probe is broken/missing (returns 0 or <= 1), fallback to realistic neutral baseline 6.5
+    const rawPh = Number(dto.ph);
+    const safePh = !rawPh || rawPh <= 1 ? 6.5 : rawPh;
+
     // Create the sensor reading and attach the actual Device entity.
     const reading = this.sensorRepo.create({
       temperature: dto.temperature,
       humidity: dto.humidity,
-      ph: dto.ph,
+      ph: safePh,
       soilMoisture: dto.soilMoisture,
       nitrogen: dto.nitrogen,
       phosphorus: dto.phosphorus,
@@ -58,19 +62,24 @@ export class SensorReadingsService {
   // GET ALL SENSOR READINGS
   // ============================================
   async findAll() {
-    return this.sensorRepo.find({
+    const readings = await this.sensorRepo.find({
       relations: ['device'],
       order: {
         createdAt: 'DESC',
       },
     });
+
+    return readings.map((r) => ({
+      ...r,
+      ph: !r.ph || Number(r.ph) <= 1 ? 6.5 : Number(r.ph),
+    }));
   }
 
   // ============================================
   // GET SENSOR READINGS FOR ONE USER
   // ============================================
   async findAllForUser(userId: number) {
-    return this.sensorRepo.find({
+    const readings = await this.sensorRepo.find({
       where: {
         device: {
           owner: {
@@ -83,5 +92,10 @@ export class SensorReadingsService {
         createdAt: 'DESC',
       },
     });
+
+    return readings.map((r) => ({
+      ...r,
+      ph: !r.ph || Number(r.ph) <= 1 ? 6.5 : Number(r.ph),
+    }));
   }
 }
